@@ -1,5 +1,6 @@
 // QuattroStagioni - season engine: calendar, stages, temperature, weather, snow, light.
 // Config parsing and the ini template live in season_config.cpp.
+#include "../i18n.h"
 #include "season.h"
 
 #include <algorithm>
@@ -306,7 +307,7 @@ std::string SeasonConfig::dayToLabel(double day, Region r) const {
     int cur = int(std::floor(p.progress * len)) + 1;
     cur = std::min(std::max(cur, 1), total);
     char buf[96];
-    std::snprintf(buf, sizeof buf, "%s, giorno %d di %d", phaseNameIt(Phase(p.phase)), cur, total);
+    std::snprintf(buf, sizeof buf, i18n::tr("%s, giorno %d di %d"), i18n::tr(phaseNameIt(Phase(p.phase))), cur, total);
     return buf;
 }
 

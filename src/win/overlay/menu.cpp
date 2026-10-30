@@ -6,6 +6,8 @@
 // under the mutex, with configDirty set, only when a widget changed something.
 #include "menu.h"
 
+#include "i18n.h"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -21,6 +23,8 @@
 #include "qs_state.h"
 
 namespace qs {
+using qs::i18n::tr;
+
 namespace {
 
 using season::DaySource;
@@ -90,17 +94,17 @@ float S(float v) { return v * g_scale; }
 
 // ------------------------------------------------------------------ season helpers (local, UI only)
 const char* phaseName(int p) {
-    static const char* n[] = {"Primavera", "Estate", "Fine estate", "Autunno", "Inverno"};
+    const char* n[] = {tr("Primavera"), tr("Estate"), tr("Fine estate"), tr("Autunno"), tr("Inverno")};
     return (p >= 0 && p < season::kPhaseCount) ? n[p] : "?";
 }
 const char phaseLetter[] = {'S', 'U', 'L', 'A', 'W'};
 const char* regionName(int r) {
-    static const char* n[] = {"Temperata", "Nord freddo", "Palude e giungla", "Acquatica", "Deserto", "Abisso"};
+    const char* n[] = {tr("Temperata"), tr("Nord freddo"), tr("Palude e giungla"), tr("Acquatica"), tr("Deserto"), tr("Abisso")};
     return (r >= 0 && r < kRegions) ? n[r] : "?";
 }
 const char* regionHint(int r) {
-    static const char* n[] = {"ciclo completo", "inverno lungo e anticipato", "sempreverde, solo umidità",
-                              "variazioni minime", "sempre vanilla", "sempre vanilla"};
+    const char* n[] = {tr("ciclo completo"), tr("inverno lungo e anticipato"), tr("sempreverde, solo umidità"),
+                              tr("variazioni minime"), tr("sempre vanilla"), tr("sempre vanilla")};
     return (r >= 0 && r < kRegions) ? n[r] : "";
 }
 bool excludedByDefault(int r) { return r == int(Region::DesertDry) || r == int(Region::Abyss); }
@@ -383,7 +387,7 @@ void yearWheel(const SeasonConfig& cfg, float today, float size) {
     phaseAt(cfg, today, ph, prog);
     char big[16], small[48];
     snprintf(big, sizeof big, "%d", int(std::floor(std::fmod(std::fmod(today, year) + year, year))) + 1);
-    snprintf(small, sizeof small, "giorno su %d", int(std::lround(year)));
+    snprintf(small, sizeof small, tr("giorno su %d"), int(std::lround(year)));
     ImGui::PushFont(g_fontBold, ImGui::GetStyle().FontSizeBase * 2.6f);
     ImVec2 bs = ImGui::CalcTextSize(big);
     dl->AddText(ImVec2(c.x - bs.x * 0.5f, c.y - bs.y * 0.78f), col(kText), big);
@@ -478,36 +482,36 @@ void tabCalendar(Frame& f) {
     int ph;
     float prog;
     phaseAt(c, today, ph, prog);
-    sectionTitle("Oggi");
+    sectionTitle(tr("Oggi"));
     inlineIcon(ph, S(34));
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::PushFont(g_fontBold, ImGui::GetStyle().FontSizeBase * 1.25f);
     ImGui::TextColored(ImVec4(kPhaseColor[ph].r, kPhaseColor[ph].g, kPhaseColor[ph].b, 1), "%s", phaseName(ph));
     ImGui::PopFont();
-    dimText("giorno %.1f di %.0f, %d%% della fase", std::fmod(std::fmod(today, year) + year, year) + 1, year,
+    dimText(tr("giorno %.1f di %.0f, %d%% della fase"), std::fmod(std::fmod(today, year) + year, year) + 1, year,
             int(std::lround(prog * 100)));
     ImGui::EndGroup();
-    meter("Fase", prog, kPhaseColor[ph]);
+    meter(tr("Fase"), prog, kPhaseColor[ph]);
     {
         int next = (ph + 1) % season::kPhaseCount;
         float left = std::max(0.0f, c.phaseDays[ph] * (1.0f - prog));
-        ImGui::Text("Prossima fase: ");
+        ImGui::Text(tr("Prossima fase: "));
         ImGui::SameLine(0, 0);
         ImGui::TextColored(ImVec4(kPhaseColor[next].r, kPhaseColor[next].g, kPhaseColor[next].b, 1), "%s", phaseName(next));
         ImGui::SameLine(0, 0);
-        ImGui::Text(" tra %.1f giorni", left);
+        ImGui::Text(tr(" tra %.1f giorni"), left);
     }
     if (f.engineLive) {
-        ImGui::Text("Stadio visivo (Temperata): %s", stageText(f.st.stage[0]).c_str());
-        dimText("contatore continuo: giorno %.2f", f.st.day);
+        ImGui::Text(tr("Stadio visivo (Temperata): %s"), stageText(f.st.stage[0]).c_str());
+        dimText(tr("contatore continuo: giorno %.2f"), f.st.day);
     } else {
-        dimText("Motore stagioni in attesa: i valori dal vivo compariranno qui.");
+        dimText(tr("Motore stagioni in attesa: i valori dal vivo compariranno qui."));
     }
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("Sorgente del giorno");
+    sectionTitle(tr("Sorgente del giorno"));
     int src = int(c.daySource);
-    const char* srcNames[] = {"Orologio di gioco", "Tempo di gioco", "Manuale"};
+    const char* srcNames[] = {tr("Orologio di gioco"), tr("Tempo di gioco"), tr("Manuale")};
     for (int i = 0; i < 3; ++i) {
         if (i) ImGui::SameLine();
         if (ImGui::RadioButton(srcNames[i], src == i)) {
@@ -517,25 +521,25 @@ void tabCalendar(Frame& f) {
         }
     }
     if (c.daySource == DaySource::GameClock && !f.clockHooked)
-        dimText("Orologio del gioco non ancora agganciato: si usa il tempo di gioco finché non è disponibile.");
+        dimText(tr("Orologio del gioco non ancora agganciato: si usa il tempo di gioco finché non è disponibile."));
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (c.daySource == DaySource::Playtime) {
-        f.changed |= ImGui::SliderFloat("##mpd", &c.realMinutesPerDay, 5.0f, 240.0f, "%.0f minuti reali per giorno",
+        f.changed |= ImGui::SliderFloat("##mpd", &c.realMinutesPerDay, 5.0f, 240.0f, tr("%.0f minuti reali per giorno"),
                                         ImGuiSliderFlags_AlwaysClamp);
     } else if (c.daySource == DaySource::Manual) {
         float shown = c.startDay + 1.0f;  // 1-based like every other day shown in the menu
-        if (ImGui::SliderFloat("##day", &shown, 1.0f, year + 0.99f, "giorno %.1f", ImGuiSliderFlags_AlwaysClamp)) {
+        if (ImGui::SliderFloat("##day", &shown, 1.0f, year + 0.99f, tr("giorno %.1f"), ImGuiSliderFlags_AlwaysClamp)) {
             c.startDay = shown - 1.0f;
             f.changed = true;
         }
     } else {
         ImGui::BeginDisabled();
         float dummy = c.realMinutesPerDay;
-        ImGui::SliderFloat("##mpd2", &dummy, 5.0f, 240.0f, "segue l'orologio del gioco");
+        ImGui::SliderFloat("##mpd2", &dummy, 5.0f, 240.0f, tr("segue l'orologio del gioco"));
         ImGui::EndDisabled();
     }
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("Vai all'inizio di");
+    sectionTitle(tr("Vai all'inizio di"));
     float bw = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 4) / 5;
     for (int i = 0; i < season::kPhaseCount; ++i) {
         if (i) ImGui::SameLine();
@@ -551,7 +555,7 @@ void tabCalendar(Frame& f) {
         }
         ImGui::PopStyleColor(3);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Passa a modalità manuale, giorno %.0f", phaseStart(c, i) + 1);
+            ImGui::SetTooltip(tr("Passa a modalità manuale, giorno %.0f"), phaseStart(c, i) + 1);
         ImDrawList* dl = ImGui::GetWindowDrawList();
         drawSeasonIcon(dl, ImVec2(bp.x + bw * 0.5f, bp.y + S(20)), S(12), i);
         const char* n = phaseName(i);
@@ -568,7 +572,7 @@ void tabCalendar(Frame& f) {
 
 void tabSeasons(Frame& f) {
     SeasonConfig& c = f.cfg;
-    sectionTitle("Lunghezza delle fasi");
+    sectionTitle(tr("Lunghezza delle fasi"));
     yearStrip(c, displayDay(f));
     for (int i = 0; i < season::kPhaseCount; ++i) {
         ImGui::PushID(i);
@@ -578,41 +582,41 @@ void tabSeasons(Frame& f) {
         ImGui::TextUnformatted(phaseName(i));
         ImGui::SameLine(S(150));
         ImGui::SetNextItemWidth(-FLT_MIN);
-        f.changed |= ImGui::SliderFloat("##len", &c.phaseDays[i], 1.0f, 60.0f, "%.0f giorni", ImGuiSliderFlags_AlwaysClamp);
+        f.changed |= ImGui::SliderFloat("##len", &c.phaseDays[i], 1.0f, 60.0f, tr("%.0f giorni"), ImGuiSliderFlags_AlwaysClamp);
         ImGui::PopID();
     }
-    dimText("Un anno dura %.0f giorni di gioco. L'estate è il gioco originale.", yearLength(c));
+    dimText(tr("Un anno dura %.0f giorni di gioco. L'estate è il gioco originale."), yearLength(c));
     ImGui::Dummy(ImVec2(0, S(4)));
-    sectionTitle("Transizioni");
+    sectionTitle(tr("Transizioni"));
     float pct = c.transitionFraction * 100.0f;
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Coda di transizione");
+    ImGui::TextUnformatted(tr("Coda di transizione"));
     ImGui::SameLine(S(210));
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::SliderFloat("##tf", &pct, 0.0f, 90.0f, "%.0f%% di ogni fase", ImGuiSliderFlags_AlwaysClamp)) {
+    if (ImGui::SliderFloat("##tf", &pct, 0.0f, 90.0f, tr("%.0f%% di ogni fase"), ImGuiSliderFlags_AlwaysClamp)) {
         c.transitionFraction = pct / 100.0f;
         f.changed = true;
     }
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Stadi intermedi");
+    ImGui::TextUnformatted(tr("Stadi intermedi"));
     ImGui::SameLine(S(210));
     ImGui::SetNextItemWidth(-FLT_MIN);
-    f.changed |= ImGui::SliderInt("##steps", &c.transitionSteps, 0, 6, c.transitionSteps == 0 ? "cambio netto" : "%d stadi",
+    f.changed |= ImGui::SliderInt("##steps", &c.transitionSteps, 0, 6, c.transitionSteps == 0 ? tr("cambio netto") : tr("%d stadi"),
                                   ImGuiSliderFlags_AlwaysClamp);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("Più stadi: passaggio più graduale, ma più spazio su disco per i pacchetti.");
+        ImGui::SetTooltip(tr("Più stadi: passaggio più graduale, ma più spazio su disco per i pacchetti."));
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Varietà per pianta");
+    ImGui::TextUnformatted(tr("Varietà per pianta"));
     ImGui::SameLine(S(210));
     ImGui::SetNextItemWidth(-FLT_MIN);
-    f.changed |= ImGui::SliderFloat("##jit", &c.assetJitterDays, 0.0f, 7.0f, "+/- %.1f giorni", ImGuiSliderFlags_AlwaysClamp);
+    f.changed |= ImGui::SliderFloat("##jit", &c.assetJitterDays, 0.0f, 7.0f, tr("+/- %.1f giorni"), ImGuiSliderFlags_AlwaysClamp);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("Sposta il calendario di ogni albero, così un bosco non cambia tutto insieme.");
+        ImGui::SetTooltip(tr("Sposta il calendario di ogni albero, così un bosco non cambia tutto insieme."));
 }
 
 void tabRegions(Frame& f) {
     SeasonConfig& c = f.cfg;
-    dimText("Ogni regione può essere spenta, anticipata o ritardata. Deserto e Abisso restano sempre vanilla di default.");
+    dimText(tr("Ogni regione può essere spenta, anticipata o ritardata. Deserto e Abisso restano sempre vanilla di default."));
     ImGui::Dummy(ImVec2(0, S(4)));
     float cardW = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
     for (int r = 0; r < kRegions; ++r) {
@@ -632,7 +636,7 @@ void tabRegions(Frame& f) {
         }
         if (excludedByDefault(r)) {
             ImGui::PushStyleColor(ImGuiCol_Text, rc.enabled ? kWarn : kTextDim);
-            ImGui::TextUnformatted(rc.enabled ? "esclusa di default: attivarla è sperimentale" : "esclusa di default (sempre vanilla)");
+            ImGui::TextUnformatted(rc.enabled ? tr("esclusa di default: attivarla è sperimentale") : tr("esclusa di default (sempre vanilla)"));
             ImGui::PopStyleColor();
         } else {
             dimText("%s", regionHint(r));
@@ -640,7 +644,7 @@ void tabRegions(Frame& f) {
         ImGui::BeginDisabled(!rc.enabled);
         ImGui::SetNextItemWidth(-FLT_MIN);
         f.changed |= ImGui::SliderFloat("##off", &rc.dayOffset, -15.0f, 15.0f,
-                                        rc.dayOffset < -0.05f ? "anticipo %.1f giorni" : (rc.dayOffset > 0.05f ? "ritardo %+.1f giorni" : "nessuno spostamento"),
+                                        rc.dayOffset < -0.05f ? tr("anticipo %.1f giorni") : (rc.dayOffset > 0.05f ? tr("ritardo %+.1f giorni") : tr("nessuno spostamento")),
                                         ImGuiSliderFlags_AlwaysClamp);
         float sw = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 4) / 5;
         for (int p = 0; p < season::kPhaseCount; ++p) {
@@ -657,7 +661,7 @@ void tabRegions(Frame& f) {
             float fh = ImGui::GetFrameHeight();
             drawSeasonIcon(ImGui::GetWindowDrawList(), ImVec2(fp.x + S(11), fp.y + fh * 0.5f), fh * 0.28f, p);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("%s: durata x%.2f in questa regione (trascina)", phaseName(p), rc.phaseScale[p]);
+                ImGui::SetTooltip(tr("%s: durata x%.2f in questa regione (trascina)"), phaseName(p), rc.phaseScale[p]);
             ImGui::PopID();
         }
         ImGui::EndDisabled();
@@ -672,27 +676,27 @@ void tabWeather(Frame& f) {
     float colW = ImGui::GetContentRegionAvail().x * 0.47f;
     ImGui::BeginGroup();
     ImGui::PushItemWidth(colW);
-    sectionTitle("Cosa controlla la mod");
-    f.changed |= toggle("Meteo stagionale", &c.weatherControl, "Pesi del meteo per stagione: estati limpide, autunni piovosi, inverni nevosi.");
-    f.changed |= toggle("Neve che si accumula", &c.snowAccumulation, "La copertura cresce quando nevica sotto zero e si scioglie sopra zero.");
-    f.changed |= toggle("Luce stagionale", &c.lightControl, "Sole più basso e toni freddi in inverno, più caldi in autunno.");
-    f.changed |= toggle("Durata del giorno", &c.dayLengthControl, "Giornate più corte in inverno, più lunghe in estate.");
-    f.changed |= toggle("Particelle", &c.particles, "Foglie che cadono in autunno, fiato visibile al freddo.");
+    sectionTitle(tr("Cosa controlla la mod"));
+    f.changed |= toggle(tr("Meteo stagionale"), &c.weatherControl, tr("Pesi del meteo per stagione: estati limpide, autunni piovosi, inverni nevosi."));
+    f.changed |= toggle(tr("Neve che si accumula"), &c.snowAccumulation, tr("La copertura cresce quando nevica sotto zero e si scioglie sopra zero."));
+    f.changed |= toggle(tr("Luce stagionale"), &c.lightControl, tr("Sole più basso e toni freddi in inverno, più caldi in autunno."));
+    f.changed |= toggle(tr("Durata del giorno"), &c.dayLengthControl, tr("Giornate più corte in inverno, più lunghe in estate."));
+    f.changed |= toggle(tr("Particelle"), &c.particles, tr("Foglie che cadono in autunno, fiato visibile al freddo."));
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("Regolazioni");
+    sectionTitle(tr("Regolazioni"));
     ImGui::BeginDisabled(!c.snowAccumulation);
-    f.changed |= ImGui::SliderFloat("##acc", &c.snowAccumPerHour, 0.0f, 1.0f, "accumulo %.2f / ora di gioco", ImGuiSliderFlags_AlwaysClamp);
-    f.changed |= ImGui::SliderFloat("##melt", &c.snowMeltPerHour, 0.0f, 1.0f, "scioglimento %.2f / ora", ImGuiSliderFlags_AlwaysClamp);
+    f.changed |= ImGui::SliderFloat("##acc", &c.snowAccumPerHour, 0.0f, 1.0f, tr("accumulo %.2f / ora di gioco"), ImGuiSliderFlags_AlwaysClamp);
+    f.changed |= ImGui::SliderFloat("##melt", &c.snowMeltPerHour, 0.0f, 1.0f, tr("scioglimento %.2f / ora"), ImGuiSliderFlags_AlwaysClamp);
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!c.lightControl && !c.dayLengthControl);
-    f.changed |= ImGui::SliderFloat("##lat", &c.virtualLatitudeDeg, 0.0f, 70.0f, "latitudine virtuale %.0f gradi", ImGuiSliderFlags_AlwaysClamp);
+    f.changed |= ImGui::SliderFloat("##lat", &c.virtualLatitudeDeg, 0.0f, 70.0f, tr("latitudine virtuale %.0f gradi"), ImGuiSliderFlags_AlwaysClamp);
     ImGui::EndDisabled();
     ImGui::PopItemWidth();
     ImGui::EndGroup();
 
     ImGui::SameLine(0, S(28));
     ImGui::BeginGroup();
-    sectionTitle("Dal vivo");
+    sectionTitle(tr("Dal vivo"));
     ImGui::SetNextItemWidth(S(200));
     if (ImGui::BeginCombo("##reg", regionName(g_liveRegion))) {
         for (int r = 0; r < kRegions; ++r)
@@ -701,7 +705,7 @@ void tabWeather(Frame& f) {
     }
     const SeasonState& s = f.st;
     if (!f.engineLive) {
-        dimText("Motore stagioni in attesa: nessun valore ancora.");
+        dimText(tr("Motore stagioni in attesa: nessun valore ancora."));
     }
     char buf[48];
     if (f.engineLive) snprintf(buf, sizeof buf, "%.1f °C", s.temperatureC[g_liveRegion]);
@@ -713,21 +717,21 @@ void tabWeather(Frame& f) {
     ImGui::PopFont();
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
-    dimText(f.engineLive && t < s.breathThresholdC ? "fiato visibile" : "temperatura");
-    meter("Manto nevoso", s.snowCover[g_liveRegion], Rgb{0.85f, 0.92f, 1.0f});
+    dimText(f.engineLive && t < s.breathThresholdC ? tr("fiato visibile") : tr("temperatura"));
+    meter(tr("Manto nevoso"), s.snowCover[g_liveRegion], Rgb{0.85f, 0.92f, 1.0f});
     ImGui::Dummy(ImVec2(0, S(2)));
     const season::WeatherWeights& w = s.weather[g_liveRegion];
-    meter("Sereno", w.sunny, Rgb{0.98f, 0.80f, 0.30f});
-    meter("Nuvoloso", w.cloudy, Rgb{0.70f, 0.70f, 0.72f});
-    meter("Pioggia", w.rainy, Rgb{0.40f, 0.62f, 0.90f});
-    meter("Temporale", w.storm, Rgb{0.55f, 0.45f, 0.80f});
-    meter("Neve", w.snowy, Rgb{0.88f, 0.94f, 1.00f});
-    meter("Vento", w.windy, Rgb{0.55f, 0.80f, 0.70f});
+    meter(tr("Sereno"), w.sunny, Rgb{0.98f, 0.80f, 0.30f});
+    meter(tr("Nuvoloso"), w.cloudy, Rgb{0.70f, 0.70f, 0.72f});
+    meter(tr("Pioggia"), w.rainy, Rgb{0.40f, 0.62f, 0.90f});
+    meter(tr("Temporale"), w.storm, Rgb{0.55f, 0.45f, 0.80f});
+    meter(tr("Neve"), w.snowy, Rgb{0.88f, 0.94f, 1.00f});
+    meter(tr("Vento"), w.windy, Rgb{0.55f, 0.80f, 0.70f});
     ImGui::Dummy(ImVec2(0, S(4)));
     char a[8], b[8];
     hourText(s.sunriseHour, a, sizeof a);
     hourText(s.sunsetHour, b, sizeof b);
-    ImGui::Text("Alba %s, tramonto %s", a, b);
+    ImGui::Text(tr("Alba %s, tramonto %s"), a, b);
     dayBar(s.sunriseHour, s.sunsetHour);
     ImGui::EndGroup();
 }
@@ -744,21 +748,20 @@ std::wstring logPath() {
 }
 
 void tabInfo(Frame& f) {
-    sectionTitle("Versioni");
+    sectionTitle(tr("Versioni"));
     ImGui::Text("QuattroStagioni %s", g_modVersion.c_str());
-    dimText("Interfaccia: Dear ImGui %s (MIT), hook: MinHook (BSD)", IMGUI_VERSION);
+    dimText(tr("Interfaccia: Dear ImGui %s (MIT), hook: MinHook (BSD)"), IMGUI_VERSION);
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("Stato");
-    ImGui::TextWrapped("%s", f.status.empty() ? "nessun messaggio" : f.status.c_str());
-    ImGui::Text("Overlay: %s", overlayActive() ? "attivo" : "non agganciato");
-    ImGui::Text("Orologio del gioco: %s", f.clockHooked ? "agganciato" : "non agganciato");
-    ImGui::Text("Motore stagioni: %s", f.engineLive ? "attivo" : "in attesa");
+    sectionTitle(tr("Stato"));
+    ImGui::TextWrapped("%s", f.status.empty() ? tr("nessun messaggio") : f.status.c_str());
+    ImGui::Text(tr("Overlay: %s"), overlayActive() ? tr("attivo") : tr("non agganciato"));
+    ImGui::Text(tr("Orologio del gioco: %s"), f.clockHooked ? tr("agganciato") : tr("non agganciato"));
+    ImGui::Text(tr("Motore stagioni: %s"), f.engineLive ? tr("attivo") : tr("in attesa"));
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("Pacchetto stagionale");
-    dimText("Non ancora disponibile: il generatore delle varianti stagionali è in sviluppo. "
-            "Le texture verranno create sul tuo PC dai file del gioco, nessun asset viene distribuito.");
+    sectionTitle(tr("Pacchetto stagionale"));
+    dimText("%s", tr("I pacchetti si creano sul tuo PC con qs_gen dai file del gioco: nessun asset viene distribuito."));
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle("File di log");
+    sectionTitle(tr("File di log"));
     std::wstring lp = logPath();
     char narrow[MAX_PATH * 3];
     int n = WideCharToMultiByte(CP_UTF8, 0, lp.c_str(), int(lp.size()), narrow, sizeof narrow - 1, nullptr, nullptr);
@@ -766,7 +769,7 @@ void tabInfo(Frame& f) {
     ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
     ImGui::TextWrapped("%s", narrow);
     ImGui::PopStyleColor();
-    if (ImGui::SmallButton("Copia percorso")) ImGui::SetClipboardText(narrow);
+    if (ImGui::SmallButton(tr("Copia percorso"))) ImGui::SetClipboardText(narrow);
 }
 
 // ------------------------------------------------------------------ header and footer
@@ -792,7 +795,7 @@ void header(const Frame& f, bool* open) {
     float th = ImGui::GetFontSize();
     ImGui::PopFont();
     char sub[96];
-    snprintf(sub, sizeof sub, "%s, giorno %d di %d", phaseName(ph),
+    snprintf(sub, sizeof sub, tr("%s, giorno %d di %d"), phaseName(ph),
              int(std::floor(std::fmod(std::fmod(displayDay(f), yearLength(f.cfg)) + yearLength(f.cfg), yearLength(f.cfg)))) + 1,
              int(std::lround(yearLength(f.cfg))));
     dl->AddText(ImVec2(tp.x + S(2), tp.y + th + S(2)), col(pc), sub);
@@ -825,7 +828,7 @@ void footer(Frame& f) {
         ImGui::TextColored(g_saveOk ? ImVec4(0.60f, 0.85f, 0.45f, 1) : kWarn, "%s", g_saveMsg.c_str());
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
-        ImGui::Text("%s", f.status.empty() ? "F5 o Esc per chiudere. Le modifiche si applicano subito." : f.status.c_str());
+        ImGui::Text("%s", f.status.empty() ? tr("F5 o Esc per chiudere. Le modifiche si applicano subito.") : f.status.c_str());
         ImGui::PopStyleColor();
     }
     float bw = S(130);
@@ -836,16 +839,16 @@ void footer(Frame& f) {
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHi);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.80f, 0.48f, 0.18f, 1));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.12f, 0.08f, 0.05f, 1));
-    if (ImGui::Button("Salva", ImVec2(bw, 0))) {
+    if (ImGui::Button(tr("Salva"), ImVec2(bw, 0))) {
         std::string err;
         g_saveOk = menuRequestSave(err);
-        g_saveMsg = g_saveOk ? "Impostazioni salvate in QuattroStagioni.ini" : ("Salvataggio non riuscito: " + err);
+        g_saveMsg = g_saveOk ? tr("Impostazioni salvate in QuattroStagioni.ini") : (tr("Salvataggio non riuscito: ") + err);
         g_saveTime = now;
     }
     ImGui::PopStyleColor(4);
     ImGui::EndDisabled();
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Salvataggio non ancora collegato in questa versione");
+        ImGui::SetTooltip(tr("Salvataggio non ancora collegato in questa versione"));
 }
 
 }  // namespace
@@ -855,7 +858,7 @@ void menuSetSaveCallback(MenuSaveFn fn) { g_saveFn = fn; }
 
 bool menuRequestSave(std::string& error) {
     if (!g_saveFn) {
-        error = "nessuna funzione di salvataggio";
+        error = tr("nessuna funzione di salvataggio");
         return false;
     }
     return g_saveFn(error);
@@ -1006,8 +1009,8 @@ void draw(bool* open, float fade) {
             struct Tab {
                 const char* name;
                 void (*fn)(Frame&);
-            } tabs[] = {{"  Calendario  ", tabCalendar}, {"  Stagioni  ", tabSeasons}, {"  Regioni  ", tabRegions},
-                        {"  Meteo e luce  ", tabWeather}, {"  Info  ", tabInfo}};
+            } tabs[] = {{tr("  Calendario  "), tabCalendar}, {tr("  Stagioni  "), tabSeasons}, {tr("  Regioni  "), tabRegions},
+                        {tr("  Meteo e luce  "), tabWeather}, {tr("  Info  "), tabInfo}};
             for (const Tab& t : tabs) {
                 if (ImGui::BeginTabItem(t.name)) {
                     ImGui::Dummy(ImVec2(0, S(4)));
@@ -1038,7 +1041,7 @@ void drawToast(float alpha, const char* keyName) {
     ImGuiIO& io = ImGui::GetIO();
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     char line[96];
-    snprintf(line, sizeof line, "Premi %s per il menu", keyName);
+    snprintf(line, sizeof line, tr("Premi %s per il menu"), keyName);
     ImGui::PushFont(g_fontBold, 0.0f);
     ImVec2 t1 = ImGui::CalcTextSize("QuattroStagioni attiva");
     ImGui::PopFont();

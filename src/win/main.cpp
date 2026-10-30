@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include "io_hooks.h"
+#include "lang.h"
 #include "log.h"
 #include "overlay/overlay.h"
 #include "probe/probe.h"
@@ -47,6 +48,7 @@ void initialize() {
             return;
         }
 
+        qs::initLanguage(scriptsDir);
         qs::SetupResult setup = qs::runSetup(cfg, scriptsDir);
         bool hooked = false, packs = false;
         if (!setup.versionOk) {
