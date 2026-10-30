@@ -37,9 +37,44 @@ gioco (repo pubblico). I bug trovati vanno in `docs/dev/BUGS.md`.
   come previsto (controllo di versione: MISMATCH).
 - Al passo 3 questa installazione va sostituita con quella dell'artifact CI.
 
-## 1. Verifica inventario
+## 1. Verifica inventario (30/10/2026)
 
-Da fare (serve `qs_gen.exe` da `dist-ci/`).
+Strumenti: artifact CI `QuattroStagioni-dist` della build 9 (commit `7666317`), sha256 dello zip
+uguale al digest pubblicato da GitHub. Verifica d'integrità di Steam non eseguita (scelta di
+Stefano): la base è il gioco così com'è dopo il hotfix del 30/10.
+
+Comando: `qs_gen.exe --game "<Crimson Desert>" --verify-inventory --report local-out\verify.txt`
+(report e output restano in `local-out/`, ignorata da git).
+
+| Voce | Esito |
+|---|---|
+| Voci controllate | 3688 |
+| OK (indice, decodifica stretta, header DDS) | 3686 |
+| Mancanti | 0 |
+| Indice diverso | 2, solo l'offset nel paz (vedi BUGS.md, B1) |
+| Errori di decodifica / header diversi | 0 / 0 |
+| Coperte dal DLC (shadowed) / errori di gruppo | 0 / 0 |
+| Tempo | 3 s (circa 980 MB letti, decodifica completa) |
+
+Le due voci con offset diverso sono texture d'erba del terreno nel gruppo 0000. Il generatore le
+salta (restano vanilla), quindi non è bloccante, ma l'inventario va aggiornato al hotfix.
+
+### DLC e gruppi
+
+- Tutti gli indici (`0.pamt`) della radice e di `dlc/dlc_01` hanno l'hash interno corretto.
+- In radice mancano 0018 e 0034: nessuna voce dell'inventario li usa, nessun errore di gruppo.
+- Il DLC ha 40 gruppi (`dlc/dlc_01/0000`-`0040`, alcuni vuoti) con circa 76.800 texture DDS:
+  - circa 75.500 sono tile di settore del terreno in `leveldata/rootlevel` (colore, normali,
+    speculare);
+  - circa 750 in `character/texture`, circa 520 in `ui/texture`;
+  - solo 34 in `object/texture`, tutte di oggetti e arredi (decorazioni, statue, gimmick), nessuna
+    pianta.
+- Cercando nomi di vegetazione (tree, grass, leaf, bush, plant, flower, moss, ivy, fern, reed, crop)
+  nel DLC risultano solo 3 texture di alghe (`leaf_seaweed`, personaggi). **Il DLC non ha vegetazione
+  propria**: conferma l'inventario v0. Le piante della regione del DLC riusano quelle del gioco base.
+- Domanda aperta per la sessione cloud: i tile di settore del DLC possono contenere colore del
+  terreno (prati) della nuova regione; oggi l'inventario include i tile `terrain` del gioco base ma
+  non quelli del DLC.
 
 ## 2. Anteprime vere
 
