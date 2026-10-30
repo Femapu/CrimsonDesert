@@ -188,6 +188,10 @@ Semantic=snow_amount
 Offset=0x10
 Min=2
 Max=1
+[target.bad_vtable_offset]
+Object=weather
+Semantic=snow_amount
+Offset=0x4
 [object.bad_scan]
 Instance=scan
 [object.bad_global]
@@ -198,7 +202,7 @@ Instance=capture
 )";
     CHECK(parseTargetsText(text, c, errors));
     for (const auto& e : errors) std::printf("  (expected) %s\n", e.c_str());
-    CHECK(errors.size() == 9);
+    CHECK(errors.size() == 10);
     CHECK(c.enabled && c.allowHooks && c.anomalyLimit == 3 && c.intervalMs == 100);
     CHECK(c.region == int(season::Region::NorthCold));
     CHECK(!c.features[int(Feature::Particles)] && c.features[int(Feature::Weather)]);
@@ -222,7 +226,7 @@ Instance=capture
     // defaults: everything off
     TargetsConfig d0;
     errors.clear();
-    CHECK(parseTargetsText("[General]\n[object.o]\nClass=pa::A\n[target.t]\nObject=o\nSemantic=snow_amount\nOffset=4\n", d0, errors));
+    CHECK(parseTargetsText("[General]\n[object.o]\nClass=pa::A\n[target.t]\nObject=o\nSemantic=snow_amount\nOffset=0x10\n", d0, errors));
     CHECK(errors.empty() && !d0.enabled && !d0.allowHooks && d0.targets.size() == 1 && !d0.targets[0].enabled);
     CHECK(d0.targets[0].restore && d0.targets[0].mode == Mode::Write);
 

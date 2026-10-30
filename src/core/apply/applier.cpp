@@ -32,7 +32,9 @@ float weightOf(const season::WeatherWeights& w, int i) {
     return v[i] > 0 ? v[i] : 0.0f;
 }
 
-std::string fmt(const char* f, ...) __attribute__((format(printf, 1, 2)));
+#if defined(__GNUC__)
+std::string fmt(const char* f, ...) __attribute__((format(gnu_printf, 1, 2)));
+#endif
 std::string fmt(const char* f, ...) {
     char b[512];
     va_list ap;
@@ -456,12 +458,14 @@ void Applier::applyTarget(size_t ti, const season::SeasonState& s, const season:
     }
     if (t.feature == Feature::Weather) schedUsed_ = true;
     bool anyFail = false, anyOk = false;
+    std::string lastErr;
     for (size_t k = 0; k < o.addrs.size() && k < rt.inst.size(); ++k) {
         FieldRt& f = rt.inst[k];
         const uint64_t addr = o.addrs[k] + t.offset;
         uint8_t cur[8] = {};
         if (!mem.read(addr, cur, n)) {
             anyFail = true;
+            lastErr = "field unreadable";
             continue;
         }
         const uint32_t bits = rawBits(t.kind, cur);
@@ -524,12 +528,8 @@ void Applier::applyTarget(size_t ti, const season::SeasonState& s, const season:
         if (needWrite) {
             std::string why;
             if (!mem.write(addr, out, n, &why)) {
-                ++rt.anomalies;
-                if (++rt.failStreak >= limit) {
-                    fail(ti, mem, "write refused or not verified: " + why);
-                    return;
-                }
                 anyFail = true;
+                lastErr = "write refused or not verified: " + why;
                 continue;
             }
             ++writes_;
@@ -544,13 +544,14 @@ void Applier::applyTarget(size_t ti, const season::SeasonState& s, const season:
             rt.current = g;
         }
     }
-    if (anyOk && !anyFail) rt.failStreak = 0;
-    if (anyFail && !anyOk) {
+    if (anyFail) {
         ++rt.anomalies;
         if (++rt.failStreak >= limit) {
-            fail(ti, mem, "field unreadable or not writable");
+            fail(ti, mem, lastErr);
             return;
         }
+    } else {
+        rt.failStreak = 0;
     }
     if (anyOk && rt.state != TargetState::Active) log(fmt("target %s active (%s, %s)", t.name.c_str(), toString(t.semantic), toString(t.mode)));
     if (anyOk) rt.state = TargetState::Active;

@@ -352,6 +352,9 @@ bool parseTarget(const Ini& ini, const std::string& sec, const TargetsConfig& cf
     uint64_t off;
     if (!parseU64(ini.get(sec, "Offset"), off) || off > 0x100000) return err = "missing or bad Offset (0..0x100000)", false;
     t.offset = uint32_t(off);
+    const ObjectSpec& obj = cfg.objects[size_t(t.objectIndex)];
+    if (!obj.className.empty() && obj.checkVtable && t.offset < 8)
+        return err = "Offset < 8 overlaps the vtable pointer of a class object", false;
     std::string ty = ini.get(sec, "Type", "f32");
     if (!fieldKindFromString(ty, t.kind)) return err = "bad Type '" + ty + "' (f32 f64 i32 u32 u8 flags32)", false;
     if (ini.has(sec, "Bit")) {
