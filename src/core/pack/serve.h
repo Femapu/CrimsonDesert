@@ -48,6 +48,9 @@ struct ApplyReport {
     const Record* first = nullptr;  // first record touched (for logs)
 };
 
+// Outcome of one record in one read (applyRecord).
+enum class RecordResult { None, Patched, Already, Mismatch, Unverifiable, PayloadError };
+
 struct ServeStats {
     uint64_t applyCalls = 0, recordHits = 0, patched = 0, already = 0, mismatch = 0, unverifiable = 0,
              payloadErrors = 0, partialChunks = 0, bytesPatched = 0, cacheHits = 0, cacheMisses = 0,
@@ -64,6 +67,16 @@ public:
     // True if [offset, offset + length) of the paz in `slot` overlaps any record.
     bool touches(int slot, uint64_t offset, uint64_t length) const;
     ApplyReport apply(int slot, uint64_t offset, uint8_t* buffer, size_t length, OriginalReader* original);
+    // Same rules for ONE record (index into reader().records()) of the paz the read belongs to; the
+    // result is also added to `rep`. Returns None when the record does not overlap the read. Used by
+    // the per-texture server (multi.h), which picks the serving pack texture by texture.
+    RecordResult applyRecord(uint32_t rec, uint64_t offset, uint8_t* buffer, size_t length, OriginalReader* original,
+                             ApplyReport& rep);
+
+    // Payload cache bound; lowering it evicts immediately (the plugin splits one budget between the
+    // packs it keeps open).
+    void setCacheLimit(size_t bytes);
+    size_t cacheLimit() const;
 
     ServeStats stats() const;
 

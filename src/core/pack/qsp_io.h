@@ -7,7 +7,7 @@
 // File layout (little endian):
 //   [0, 64)        fixed header
 //       0  char[8] magic "QSPACK\x1A\x01"
-//       8  u32 formatVersion (1)       12 u32 headerSize (64)
+//       8  u32 formatVersion (2; 1 is still read)   12 u32 headerSize (64)
 //      16  u64 indexOffset             24 u64 indexSize
 //      32  u64 payloadOffset (64)      40 u64 payloadSize
 //      48  u32 recordCount             52 u32 indexHash  = lookup3(index bytes, 0xC5EDE)
@@ -16,10 +16,13 @@
 //   [indexOffset]  index (written last, so payloads stream to disk with bounded memory):
 //       u32 'QSPI'
 //       str stageId, str gameBuild, str generator, u32 recipeVersion, u32 chunkShift (12)
+//       v2 only: u32 transitionSteps
 //       u32 nGroups  x { str group, u32 pamtSelfHash }
 //       u32 nPaz     x { str group, u32 pazIndex, u64 pazSize, u32 firstRecord, u32 recordCount }
 //       u32 nRecords x { u32 pazSlot, u64 offset, u32 storedSize, u32 size, u32 flags, u32 origHash,
-//                        u32 dataHash, u64 dataOffset, u32 chunkFirst, str path }
+//                        u32 dataHash, u64 dataOffset, u32 chunkFirst,
+//                        v2 only: u32 assetSeed, u32 region,
+//                        str path }
 //       u32 nChunks  x u32 original chunk hash
 //     str = u16 length + bytes (UTF-8). Paz slots are sorted by key ("<group>/<n>.paz"); records are
 //     sorted by (slot, offset) and never overlap, so a read is matched with a binary search.
@@ -29,6 +32,11 @@
 // b = offset / 4096, hashed with lookup3(bytes, 0xC5EDE). A game read that fully covers a chunk is
 // verified without keeping the original bytes in memory; aligned reads (any 4 KiB multiple) and
 // whole-entry reads always cover their chunks fully. See serve.h for partial chunks.
+//
+// Version 2 (per-texture stages, multi.h) adds the transition steps of the stage id and, per record,
+// the texture's region (season::Region) and asset seed (lookup3(asset, 0xC5EDE)) from the inventory,
+// so the plugin can compute each texture's own stage. Version 1 packs are still read: their records
+// get hasMeta = false (the plugin then assumes Temperate and lookup3(path)).
 //
 // Integrity: header hash, index hash, per-record dataHash (checked when a payload is loaded), and
 // structural checks on load (sorted, non-overlapping, inside the paz and payload ranges).
@@ -45,7 +53,8 @@
 
 namespace qs::pack {
 
-constexpr uint32_t kFormatVersion = 1;
+constexpr uint32_t kFormatVersion = 2;      // written by PackWriter
+constexpr uint32_t kMinFormatVersion = 1;   // oldest version PackReader accepts
 constexpr uint32_t kHeaderSize = 64;
 constexpr uint32_t kChunkShift = 12;
 constexpr uint32_t kChunkSize = 1u << kChunkShift;
@@ -73,8 +82,11 @@ public:
     ~PackWriter();
     // Creates `path`.tmp; finish() renames it to `path`.
     bool open(const std::string& path, const Header& header, std::string* error = nullptr);
+    // Format version to write (default kFormatVersion; 1 writes the old layout, for tests). Call before open().
+    void setFormatVersion(uint32_t v) { version_ = v; }
     void setPazSize(const std::string& group, uint32_t pazIndex, uint64_t size);
-    // Adds one substitution. `r` needs group, path, pazIndex, offset, storedSize (size, flags optional).
+    // Adds one substitution. `r` needs group, path, pazIndex, offset, storedSize (size, flags, region,
+    // assetSeed optional).
     // Hashes and chunk hashes are computed here; the replacement is appended to the payload area.
     bool add(const Record& r, const uint8_t* original, const uint8_t* replacement, std::string* error = nullptr);
     bool finish(std::string* error = nullptr);
@@ -91,6 +103,7 @@ private:
     FILE* f_ = nullptr;
     Header header_;
     uint64_t payloadSize_ = 0;
+    uint32_t version_ = kFormatVersion;
     std::vector<Pending> recs_;
     std::vector<PazInfo> pazSizes_;
 };

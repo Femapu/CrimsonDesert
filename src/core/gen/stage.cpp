@@ -94,4 +94,13 @@ EffectiveStage effectiveStage(const Item& item, const StageSpec& st) {
     return e;
 }
 
+uint64_t estimateStageBytes(const std::vector<Item>& items, const std::string& stageId, int steps) {
+    StageSpec st;
+    if (!parseStage(stageId, steps, st)) return 0;
+    uint64_t b = 0;
+    for (const Item& it : items)
+        if (!effectiveStage(it, st).vanilla()) b += it.stored;
+    return b;
+}
+
 }  // namespace qs::gen
