@@ -12,6 +12,13 @@
 // overwriting the overlapping bytes inside the game's own buffer (see core/range_patch). Sizes,
 // offsets and the files on disk are never changed. Every hook calls the original function first or
 // unconditionally, preserves GetLastError(), and falls back to pure pass-through on any problem.
+//
+// Season packs: the active pack (a shared_ptr swapped under g_packLock) is consulted for every
+// completed read of a tracked .paz. Records are found by binary search per paz (core/pack/serve.h);
+// original bytes are verified per 4 KiB chunk against hashes stored in the pack, and the edges of
+// unaligned reads are completed from a private, unhooked handle on the same paz. Payloads come from
+// the pack file on demand through a bounded cache. A read in flight during a pack switch is served by
+// the pack active when it completes.
 #include "io_hooks.h"
 
 #include <windows.h>
@@ -19,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <unordered_map>
 
 #include "MinHook.h"
@@ -67,10 +75,16 @@ CreateFileMappingA_t oCreateFileMappingA = nullptr;
 // State
 struct Archive {
     std::string key;                // "0012/3.paz" relative to the game root (or full path)
-    std::vector<Substitution> subs; // empty for archives we only observe
+    std::wstring path;              // canonical full path (for the private original-bytes handle)
+    std::vector<Substitution> subs; // phase-2 manifest substitutions (empty for most archives)
     volatile LONG64 opens = 0, reads = 0, bytes = 0, asyncReads = 0, targetReads = 0;
     volatile LONG64 patched = 0, already = 0, mismatch = 0, mappings = 0, scatter = 0;
-    volatile LONG mappingLogged = 0;
+    volatile LONG mappingLogged = 0, scatterLogged = 0;
+    // season pack
+    volatile LONG64 slotCache = -1;   // (pack generation << 32) | (slot + 1), -1 = unresolved
+    volatile LONG64 packReads = 0, packPatched = 0, packAlready = 0, packRefused = 0;
+    HANDLE priv = INVALID_HANDLE_VALUE;  // private handle for original-chunk reads (opened lazily)
+    SRWLOCK privLock = SRWLOCK_INIT;
 };
 
 struct Pending {
@@ -96,7 +110,19 @@ SRWLOCK g_pLock = SRWLOCK_INIT;  // protects g_pending
 std::unordered_map<OVERLAPPED*, Pending> g_pending;
 volatile LONG g_pendingCount = 0;
 
-SRWLOCK g_patchLock = SRWLOCK_INIT;  // serialises buffer patching
+SRWLOCK g_patchLock = SRWLOCK_INIT;  // serialises buffer patching (phase-2 manifest entries)
+
+// Season pack state
+SRWLOCK g_packLock = SRWLOCK_INIT;  // protects g_pack, g_packGen, g_packStage
+std::shared_ptr<pack::PackServer> g_pack;
+LONG g_packGen = 1;
+std::string g_packStage;
+SRWLOCK g_packLoadLock = SRWLOCK_INIT;  // serialises setActivePack callers
+std::wstring g_packsDir, g_packRoot;
+size_t g_packCacheBytes = size_t(64) << 20;
+volatile LONG g_packsStarted = 0;
+volatile LONG g_packHitLog = 0, g_packErrLog = 0;
+const LONG kPackHitLogLines = 20, kPackErrLogLines = 50;
 volatile LONG g_readLogLines = 0;
 volatile LONG g_installed = 0;
 
@@ -176,6 +202,7 @@ void registerPaz(HANDLE h, const char* api, DWORD flags) {
         }
     }
     if (a) {
+        if (a->path.empty()) a->path = path;
         g_handles[h] = a;
         InterlockedIncrement(&g_handleCount);
         InterlockedIncrement64(&a->opens);
@@ -191,11 +218,72 @@ void registerPaz(HANDLE h, const char* api, DWORD flags) {
                 (flags & FILE_FLAG_OVERLAPPED) ? " [overlapped]" : "", (flags & FILE_FLAG_NO_BUFFERING) ? " [no-buffering]" : "");
 }
 
-bool touchesTarget(const Archive* a, uint64_t off, uint64_t len) {
+// Snapshot of the active pack (shared_ptr copy: stays valid even if a switch happens meanwhile).
+std::shared_ptr<pack::PackServer> currentPack(LONG& gen) {
+    AcquireSRWLockShared(&g_packLock);
+    std::shared_ptr<pack::PackServer> p = g_pack;
+    gen = g_packGen;
+    ReleaseSRWLockShared(&g_packLock);
+    return p;
+}
+
+// Slot of this archive in pack `p` (generation `gen`), cached per archive; -1 if the pack has none.
+int packSlot(Archive* a, const pack::PackServer* p, LONG gen) {
+    if (!p) return -1;
+    LONG64 c = a->slotCache;
+    if (c != -1 && LONG(c >> 32) == gen) return int(c & 0xFFFFFFFF) - 1;
+    int slot = p->slotFor(a->key);
+    InterlockedExchange64(&a->slotCache, (LONG64(gen) << 32) | LONG64(uint32_t(slot + 1)));
+    return slot;
+}
+
+bool packTouches(Archive* a, uint64_t off, uint64_t len) {
+    if (!g_packsStarted) return false;
+    LONG gen;
+    std::shared_ptr<pack::PackServer> p = currentPack(gen);
+    int slot = packSlot(a, p.get(), gen);
+    return slot >= 0 && p->touches(slot, off, len);
+}
+
+bool touchesTarget(Archive* a, uint64_t off, uint64_t len) {
     for (const Substitution& s : a->subs)
         if (overlaps(s, off, len)) return true;
-    return false;
+    return packTouches(a, off, len);
 }
+
+// Original bytes of a paz through a private handle opened with the UNHOOKED CreateFileW (so it is
+// never tracked) and read with the unhooked ReadFile at explicit offsets.
+class DiskOriginal : public pack::OriginalReader {
+public:
+    explicit DiskOriginal(Archive* a) : a_(a) {}
+    bool readOriginal(uint64_t off, uint8_t* dst, size_t n) override {
+        HANDLE h = handle();
+        if (h == INVALID_HANDLE_VALUE || n > 0x7FFFFFFF) return false;
+        OVERLAPPED ov = {};
+        ov.Offset = DWORD(off);
+        ov.OffsetHigh = DWORD(off >> 32);
+        DWORD got = 0;
+        BOOL r = oReadFile(h, dst, DWORD(n), &got, &ov);
+        if (!r && GetLastError() == ERROR_IO_PENDING) r = oGetOverlappedResult(h, &ov, &got, TRUE);
+        return r && got == n;
+    }
+
+private:
+    HANDLE handle() {
+        AcquireSRWLockShared(&a_->privLock);
+        HANDLE h = a_->priv;
+        ReleaseSRWLockShared(&a_->privLock);
+        if (h != INVALID_HANDLE_VALUE || a_->path.empty() || !oCreateFileW) return h;
+        AcquireSRWLockExclusive(&a_->privLock);
+        if (a_->priv == INVALID_HANDLE_VALUE)
+            a_->priv = oCreateFileW(a_->path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        h = a_->priv;
+        ReleaseSRWLockExclusive(&a_->privLock);
+        return h;
+    }
+    Archive* a_;
+};
 
 void logRead(const char* api, const Archive* a, HANDLE h, uint64_t off, DWORD len, bool async) {
     if (!log::enabled(LogLevel::Debug)) return;
@@ -239,6 +327,43 @@ void patchCompleted(Archive* a, uint64_t off, uint8_t* buf, size_t got, const ch
                     s.name.c_str(), (unsigned long long)off, got, a->key.c_str(), via,
                     (unsigned long long)pi.overlapBegin, (unsigned long long)pi.overlapEnd,
                     (unsigned long long)(pi.overlapEnd - pi.overlapBegin), s.original.size(), toString(pi.result), ms);
+    }
+
+    // ---- season pack ----
+    if (!g_packsStarted) return;
+    LONG gen;
+    std::shared_ptr<pack::PackServer> p = currentPack(gen);
+    int slot = packSlot(a, p.get(), gen);
+    if (slot < 0 || !p->touches(slot, off, got)) return;
+    InterlockedIncrement64(&a->packReads);
+    if (!g_cfg.substitute) {
+        if (InterlockedIncrement(&g_packHitLog) <= kPackHitLogLines)
+            QS_INFO("PACK HIT (observe only) %s [%llu, +%zu) via %s - not modified (Substitute=0)", a->key.c_str(),
+                    (unsigned long long)off, got, via);
+        return;
+    }
+    LARGE_INTEGER t0;
+    QueryPerformanceCounter(&t0);
+    DiskOriginal disk(a);
+    pack::ApplyReport rep = p->apply(slot, off, buf, got, &disk);
+    const double ms = msSince(t0);
+    InterlockedExchangeAdd64(&a->packPatched, rep.patched);
+    InterlockedExchangeAdd64(&a->packAlready, rep.already);
+    const uint32_t refused = rep.mismatch + rep.unverifiable + rep.payloadErrors;
+    InterlockedExchangeAdd64(&a->packRefused, refused);
+    const char* name = rep.first ? rep.first->path.c_str() : "?";
+    if (refused) {
+        if (InterlockedIncrement(&g_packErrLog) <= kPackErrLogLines)
+            QS_ERR("PACK %s: read [%llu, +%zu) of %s via %s: %u record(s) left untouched (mismatch %u, unverifiable %u, "
+                   "payload errors %u)", name, (unsigned long long)off, got, a->key.c_str(), via, refused, rep.mismatch,
+                   rep.unverifiable, rep.payloadErrors);
+    } else if (InterlockedIncrement(&g_packHitLog) <= kPackHitLogLines) {
+        QS_INFO("PACK HIT %s: read [%llu, +%zu) of %s via %s: %u record(s) patched, %u already, %llu bytes, %u edge "
+                "chunk(s) verified from disk, %.3f ms", name, (unsigned long long)off, got, a->key.c_str(), via,
+                rep.patched, rep.already, (unsigned long long)rep.bytesPatched, rep.partialChunks, ms);
+    } else {
+        QS_DBG("PACK HIT %s: read [%llu, +%zu) via %s: patched %u already %u, %.3f ms", name, (unsigned long long)off, got,
+               via, rep.patched, rep.already, ms);
     }
 }
 
@@ -335,11 +460,15 @@ BOOL WINAPI hkReadFile(HANDLE h, LPVOID buf, DWORD len, LPDWORD read, LPOVERLAPP
     InterlockedExchangeAdd64(&a->bytes, len);
     logRead("ReadFile", a, h, off, len, ov != nullptr);
 
-    const bool target = offKnown && !a->subs.empty() && touchesTarget(a, off, len);
+    const bool target = offKnown && touchesTarget(a, off, len);
     if (target) {
         InterlockedIncrement64(&a->targetReads);
-        QS_INFO("target read issued: %s [%llu, +%lu) via ReadFile%s", a->key.c_str(), (unsigned long long)off, len,
-                ov ? " (overlapped)" : "");
+        if (!a->subs.empty())
+            QS_INFO("target read issued: %s [%llu, +%lu) via ReadFile%s", a->key.c_str(), (unsigned long long)off, len,
+                    ov ? " (overlapped)" : "");
+        else
+            QS_DBG("pack read issued: %s [%llu, +%lu) via ReadFile%s", a->key.c_str(), (unsigned long long)off, len,
+                   ov ? " (overlapped)" : "");
         if (ov) {  // register before the call so a fast completion on another thread is not missed
             Pending p;
             p.archive = a;
@@ -412,10 +541,13 @@ BOOL WINAPI hkReadFileEx(HANDLE h, LPVOID buf, DWORD len, LPOVERLAPPED ov, LPOVE
     InterlockedIncrement64(&a->reads);
     InterlockedExchangeAdd64(&a->bytes, len);
     logRead("ReadFileEx", a, h, off, len, true);
-    if (a->subs.empty() || !touchesTarget(a, off, len)) return oReadFileEx(h, buf, len, ov, cb);
+    if (!touchesTarget(a, off, len)) return oReadFileEx(h, buf, len, ov, cb);
 
     InterlockedIncrement64(&a->targetReads);
-    QS_INFO("target read issued: %s [%llu, +%lu) via ReadFileEx", a->key.c_str(), (unsigned long long)off, len);
+    if (!a->subs.empty())
+        QS_INFO("target read issued: %s [%llu, +%lu) via ReadFileEx", a->key.c_str(), (unsigned long long)off, len);
+    else
+        QS_DBG("pack read issued: %s [%llu, +%lu) via ReadFileEx", a->key.c_str(), (unsigned long long)off, len);
     Pending p;
     p.archive = a;
     p.offset = off;
@@ -443,9 +575,9 @@ BOOL WINAPI hkReadFileScatter(HANDLE h, FILE_SEGMENT_ELEMENT* seg, DWORD len, LP
         InterlockedIncrement64(&a->reads);
         InterlockedExchangeAdd64(&a->bytes, len);
         logRead("ReadFileScatter", a, h, off, len, true);
-        if (!a->subs.empty() && touchesTarget(a, off, len))
-            QS_ERR("target range read via ReadFileScatter [%llu, +%lu): not supported in phase 2, left untouched",
-                   (unsigned long long)off, len);
+        if (touchesTarget(a, off, len) && InterlockedExchange(&a->scatterLogged, 1) == 0)
+            QS_ERR("target range of %s read via ReadFileScatter [%llu, +%lu): not supported, left untouched (logged once)",
+                   a->key.c_str(), (unsigned long long)off, len);
     }
     return oReadFileScatter(h, seg, len, reserved, ov);
 }
@@ -593,6 +725,7 @@ bool install(const Config& cfg, const std::wstring& gameRoot, std::vector<Archiv
         if (canon.empty()) canon = t.fullPathLower;
         Archive* a = new Archive();
         a->key = t.key;
+        a->path = canon;
         a->subs = std::move(t.subs);
         g_archives[a->key] = a;
         g_targetByPath[canon] = a;
@@ -673,7 +806,28 @@ void logSummary(const char* reason) {
             (long long)c_openW, (long long)c_openA, (long long)c_open2, (long long)c_read, (long long)c_readEx,
             (long long)c_scatter, (long long)c_mapping, (long long)c_gor, (long long)c_gorEx, (long long)c_gqcs,
             (long long)c_gqcsEx, (long long)c_waits);
+    {
+        LONG gen;
+        std::shared_ptr<pack::PackServer> p = currentPack(gen);
+        if (p) {
+            pack::ServeStats s = p->stats();
+            QS_INFO("pack %s: reads served %llu, records hit %llu, patched %llu, already %llu, LEFT UNTOUCHED: mismatch %llu "
+                    "unverifiable %llu payload errors %llu (disabled records %llu); edge chunks read from disk %llu; "
+                    "%.1f MB patched; cache %llu hits / %llu misses, %.1f MB in use",
+                    g_packStage.c_str(), (unsigned long long)s.applyCalls, (unsigned long long)s.recordHits,
+                    (unsigned long long)s.patched, (unsigned long long)s.already, (unsigned long long)s.mismatch,
+                    (unsigned long long)s.unverifiable, (unsigned long long)s.payloadErrors,
+                    (unsigned long long)s.disabledRecords, (unsigned long long)s.partialChunks,
+                    double(s.bytesPatched) / 1048576.0, (unsigned long long)s.cacheHits, (unsigned long long)s.cacheMisses,
+                    double(s.cacheBytes) / 1048576.0);
+        } else if (g_packsStarted) {
+            QS_INFO("pack: none active");
+        }
+    }
     for (Archive* a : list) {
+        if (a->packReads)
+            QS_INFO("  %-28s pack reads %lld, records patched %lld, already %lld, refused %lld", a->key.c_str(),
+                    (long long)a->packReads, (long long)a->packPatched, (long long)a->packAlready, (long long)a->packRefused);
         if (a->reads == 0 && a->subs.empty() && !log::enabled(LogLevel::Debug)) continue;
         QS_INFO("  %-28s opens %lld reads %lld (%.1f MB, async %lld, scatter %lld) mappings %lld%s", a->key.c_str(),
                 (long long)a->opens, (long long)a->reads, double(a->bytes) / 1048576.0, (long long)a->asyncReads,
@@ -689,6 +843,121 @@ void uninstall() {
     if (!InterlockedExchange(&g_installed, 0)) return;
     MH_DisableHook(MH_ALL_HOOKS);
     MH_Uninitialize();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Season packs
+bool packsStart(const Config& cfg, const std::wstring& gameRoot, const std::wstring& scriptsDir) {
+    if (!g_installed) {
+        QS_ERR("packs: hooks are not installed, season packs disabled");
+        return false;
+    }
+    const std::wstring& f = cfg.packFolder;
+    const bool absolute = f.size() > 1 && (f[1] == L':' || (f[0] == L'\\' && f[1] == L'\\'));
+    g_packsDir = absolute ? f : joinPath(scriptsDir, f);
+    g_packRoot = gameRoot;
+    g_packCacheBytes = size_t(cfg.packCacheMB) << 20;
+    InterlockedExchange(&g_packsStarted, 1);
+    QS_INFO("packs: folder %s, cache %d MB, game build %s", narrow(g_packsDir).c_str(), cfg.packCacheMB,
+            gameBuildIdOf(gameRoot).c_str());
+    if (!cfg.activePack.empty()) {
+        std::string why;
+        if (!setActivePack(cfg.activePack, &why))
+            QS_ERR("packs: initial pack %s not activated: %s", cfg.activePack.c_str(), why.c_str());
+    } else {
+        QS_INFO("packs: no active pack configured ([Packs] Active=)");
+    }
+    return true;
+}
+
+bool setActivePack(const std::string& stageOrFile, std::string* whyOut) {
+    std::string why;
+    bool ok = false;
+    if (!g_packsStarted) {
+        if (whyOut) *whyOut = "packs not started";
+        return false;
+    }
+    const bool none = stageOrFile.empty() || stageOrFile == "none";
+    AcquireSRWLockExclusive(&g_packLoadLock);
+    try {
+        std::shared_ptr<pack::PackServer> next;
+        std::string stage;
+        if (!none) {
+            const std::wstring path = resolvePackPath(g_packsDir, stageOrFile);
+            LARGE_INTEGER t0;
+            QueryPerformanceCounter(&t0);
+            next = loadVerifiedPack(g_packRoot, path, g_packCacheBytes, why);
+            if (next) {
+                const pack::PackReader& r = next->reader();
+                stage = r.header().stageId;
+                QS_INFO("packs: %s verified in %.1f ms: stage %s, %zu textures in %zu archives, %.1f MB payload, "
+                        "index %.2f MB, generator \"%s\"", narrow(path).c_str(), msSince(t0), stage.c_str(),
+                        r.records().size(), r.paz().size(), double(r.payloadSize()) / 1048576.0,
+                        double(r.indexBytes()) / 1048576.0, r.header().generator.c_str());
+            } else {
+                QS_ERR("packs: %s refused: %s (the previous pack stays active)", narrow(path).c_str(), why.c_str());
+            }
+        }
+        if (next || none) {
+            std::shared_ptr<pack::PackServer> old;
+            AcquireSRWLockExclusive(&g_packLock);
+            old = g_pack;
+            g_pack = next;
+            g_packStage = stage;
+            ++g_packGen;
+            ReleaseSRWLockExclusive(&g_packLock);
+            InterlockedExchange(&g_packHitLog, 0);
+            QS_INFO("packs: active pack is now %s (subsequent reads)", stage.empty() ? "none" : stage.c_str());
+            ok = true;
+            // `old` is freed here, or by the last hook still holding a snapshot of it.
+        }
+    } catch (...) {
+        why = "unexpected exception";
+    }
+    ReleaseSRWLockExclusive(&g_packLoadLock);
+    if (whyOut) *whyOut = why;
+    return ok;
+}
+
+std::string activePackStage() {
+    AcquireSRWLockShared(&g_packLock);
+    std::string s = g_packStage;
+    ReleaseSRWLockShared(&g_packLock);
+    return s;
+}
+
+std::vector<std::string> availablePacks() {
+    std::vector<std::string> v;
+    if (g_packsDir.empty()) return v;
+    WIN32_FIND_DATAW fd;
+    HANDLE f = FindFirstFileW(joinPath(g_packsDir, L"*.qsp").c_str(), &fd);
+    if (f == INVALID_HANDLE_VALUE) return v;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) v.push_back(narrow(fd.cFileName));
+    } while (FindNextFileW(f, &fd));
+    FindClose(f);
+    return v;
+}
+
+void packsStop() {
+    if (!InterlockedExchange(&g_packsStarted, 0)) return;
+    AcquireSRWLockExclusive(&g_packLock);
+    g_pack.reset();
+    g_packStage.clear();
+    ++g_packGen;
+    ReleaseSRWLockExclusive(&g_packLock);
+    AcquireSRWLockShared(&g_hLock);
+    for (auto& kv : g_archives) {
+        Archive* a = kv.second;
+        AcquireSRWLockExclusive(&a->privLock);
+        if (a->priv != INVALID_HANDLE_VALUE) {
+            if (oCloseHandle) oCloseHandle(a->priv);
+            else CloseHandle(a->priv);
+            a->priv = INVALID_HANDLE_VALUE;
+        }
+        ReleaseSRWLockExclusive(&a->privLock);
+    }
+    ReleaseSRWLockShared(&g_hLock);
 }
 
 }  // namespace io

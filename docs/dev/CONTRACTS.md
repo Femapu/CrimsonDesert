@@ -57,3 +57,16 @@ devono usare lo stesso seme: `seed = lookup3(asset, 0xC5EDE)`.
   `recipe.h`: `RecipeBook::applyPalette`, `profiles`, `hasProfile`, `changesLook`, `pureStage`,
   `PaletteBinding` + `paletteThunk`, `seedForAsset`, `lookFromString`.
   Dettagli e uso per il generatore: `docs/dev/texture_recipes.md`.
+- 30/10, flusso generatore + pacchetti (solo aggiunte, nessuna firma cambiata):
+  - `pack/qsp.h`: `Record` ha in piu `size`, `flags`, `pazSlot`, `chunkFirst`; `Header` ha in piu
+    `generator`. Nuovi header: `pack/qsp_io.h` (formato file, writer, reader), `pack/serve.h`
+    (sostituzione delle letture da un pacchetto), `pack/byte_source.h`.
+  - `src/win/setup.h`: `Config` ha in piu `activePack`, `packFolder`, `packCacheMB` (sezione `[Packs]`
+    dell'ini); nuove funzioni `gameBuildIdOf`, `loadVerifiedPack`, `resolvePackPath`.
+  - `src/win/io_hooks.h`: nuove funzioni `io::packsStart`, `io::setActivePack`, `io::activePackStage`,
+    `io::availablePacks`, `io::packsStop`. Il percorso del manifest di fase 2 resta invariato.
+  - Il generatore usa `texture.h` e `recipe.h` solo in `src/core/gen/bind_recipes.cpp`, attivo da solo
+    quando esistono `src/core/texture/texture.cpp` e `src/core/recipe/recipe.cpp` (altrimenti
+    `-DQS_HAVE_RECIPES` in `EXTRA_CORE_FLAGS`). Uso atteso: `tex::EncodeOptions::fitBias` 0..10,
+    `RecipeBook::apply` su mip 0, poi `tex::rebuildMips`; `RecipeBook` usato da piu thread in sola
+    lettura (`affects`/`apply` const devono essere thread safe).

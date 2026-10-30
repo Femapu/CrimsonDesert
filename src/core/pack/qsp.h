@@ -20,6 +20,11 @@ struct Record {
     uint32_t origHash = 0;      // lookup3(original stored bytes, 0xC5EDE)
     uint32_t dataHash = 0;      // lookup3(replacement, 0xC5EDE)
     uint64_t dataOffset = 0;    // inside the .qsp file
+    // Added by the generator stream (qsp_io.h):
+    uint32_t size = 0;          // decoded entry size (pamt), informational
+    uint8_t flags = 0;          // pamt flags (compression | crypto << 4), informational
+    uint32_t pazSlot = 0;       // index into PackReader::paz()
+    uint32_t chunkFirst = 0;    // first original-chunk hash of this record (see qsp_io.h)
 };
 
 struct Header {
@@ -27,9 +32,10 @@ struct Header {
     std::string gameBuild;      // exe size/timestamp string
     std::vector<std::pair<std::string, uint32_t>> pamtHashes;  // group -> self hash
     uint32_t recipeVersion = 0;
+    // Added by the generator stream (qsp_io.h):
+    std::string generator;      // qs_gen version and transform name
 };
 
-// Writer/reader API is defined by the generator stream in this folder (qsp_io.h); the ASI must be
-// able to read the index without loading payloads (payloads are read on demand, memory bounded).
+// Writer/reader API: qsp_io.h (file format), serve.h (substitution of game reads from a pack).
 
 }  // namespace qs::pack
