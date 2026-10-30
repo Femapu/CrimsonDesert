@@ -24,5 +24,7 @@ bool readT(uintptr_t addr, T& out) {
 // Enumerates committed private read-write regions (heap memory), in address order, until the
 // callback returns false.
 void forEachHeapRegion(const std::function<bool(uintptr_t base, size_t size)>& cb);
+// Same, starting from the region containing `start` (or the next one).
+void forEachHeapRegionFrom(uintptr_t start, const std::function<bool(uintptr_t base, size_t size)>& cb);
 
 }  // namespace qs::probe::mem

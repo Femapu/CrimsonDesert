@@ -119,3 +119,11 @@ secondo `docs/dev/appliers.md` (un target alla volta, partendo dall'orologio).
 - Versioni exe riconosciute (src/win/setup.cpp, kKnownExes): 333779352/1793246886 (2.04.00) e
   336264088/1793296370 (hotfix 30/10). Dopo ogni patch ricontrollare exe e hash dei pamt.
 - La consegna file sul PC ha restituito una volta copie in cache: verificare lo sha256 dopo l'installazione.
+
+## Sessione locale 30/10 sera (interrotta per budget)
+- Installato sul PC: build `claude/neve-inverno` (8574a5b), neve d'inverno + B5. Da testare in gioco.
+- Generati sul PC tutti i 19 pacchetti (S U L A W + 15 transizioni), 0 errori.
+- `wip/gpu-live`: cambio in diretta su GPU interrotto a metà (non compilato).
+- `claude/meteo-probe`: correzione B4 (scansione heap a fette di tempo, riprendibile, salta regioni enormi; chiavi ScanSliceMs, ScanRegionMaxMB) e probe dei simulatori meteo in probes.ini. NON compilato né testato: prossimo passo `./build.sh test`, poi giro di probe in gioco (probes.ini con Enabled=1, AllowHooks=0) mentre cambia il tempo.
+- Spunto: Seasons controllava due funzioni (query meteo HUD, update meteo) con 18-20 byte di prologo; quei byte (codice del gioco, non della mod) possono servire come firma per ritrovarle nella build nuova (vedi docs/recon/recon_B_report.md).
+- Regole meteo di Stefano: primavera soleggiata e poco piovosa; estate poca pioggia ma temporali; autunno pioggia frequente e temporali; neve solo in inverno e mai nel deserto.

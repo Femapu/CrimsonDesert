@@ -31,10 +31,13 @@ bool read(uintptr_t addr, void* out, size_t n) {
     return ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(addr), out, n, &got) && got == n;
 }
 
-void forEachHeapRegion(const std::function<bool(uintptr_t, size_t)>& cb) {
+void forEachHeapRegion(const std::function<bool(uintptr_t, size_t)>& cb) { forEachHeapRegionFrom(0, cb); }
+
+void forEachHeapRegionFrom(uintptr_t start, const std::function<bool(uintptr_t, size_t)>& cb) {
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     uintptr_t a = reinterpret_cast<uintptr_t>(si.lpMinimumApplicationAddress);
+    if (start > a) a = start;
     const uintptr_t maxA = reinterpret_cast<uintptr_t>(si.lpMaximumApplicationAddress);
     while (a < maxA) {
         MEMORY_BASIC_INFORMATION mbi;

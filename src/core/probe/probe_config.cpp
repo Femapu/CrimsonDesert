@@ -205,6 +205,9 @@ bool parseProbeConfig(const Ini& ini, ProbeConfig& out, std::vector<std::string>
         }
         p.scanMaxMB = getU32(ini, sec, "ScanMaxMB", p.scanMaxMB);
         p.rescanSec = getU32(ini, sec, "RescanSec", p.rescanSec);
+        p.scanSliceMs = getU32(ini, sec, "ScanSliceMs", p.scanSliceMs);
+        if (p.scanSliceMs < 20) p.scanSliceMs = 20;
+        p.scanRegionMaxMB = getU32(ini, sec, "ScanRegionMaxMB", p.scanRegionMaxMB);
         p.maxInstances = getU32(ini, sec, "MaxInstances", p.maxInstances);
         if (p.maxInstances < 1) p.maxInstances = 1;
         if (p.maxInstances > 64) p.maxInstances = 64;

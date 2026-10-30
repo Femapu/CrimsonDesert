@@ -53,7 +53,9 @@ struct ProbeSpec {
     bool captureRdx = false;           // CaptureArg=rdx (second argument instead of `this`)
     bool logCallers = true;
     std::vector<int64_t> chain;        // Global: p = *(p + chain[i]) for each element
-    uint32_t scanMaxMB = 4096;
+    uint32_t scanMaxMB = 65536;        // per full pass
+    uint32_t scanSliceMs = 150;        // B4: scan in time slices so other probes keep sampling
+    uint32_t scanRegionMaxMB = 1024;   // B4: skip huge regions (GPU/streaming pools), 0 = no limit
     uint32_t rescanSec = 0;            // 0 = scan once (and again while nothing found)
     uint32_t maxInstances = 4;
     bool checkVtable = true;           // drop instances whose vtable pointer changes

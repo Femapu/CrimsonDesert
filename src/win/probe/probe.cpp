@@ -55,6 +55,11 @@ struct Runtime {
     CaptureHook hook;
     std::vector<Instance> inst;
     uint64_t nextTick = 0, endTick = 0, nextScan = 0;
+    // B4: resumable, time-sliced heap scan
+    uintptr_t scanCursor = 0;
+    uint64_t scanPassBytes = 0, scanPassMs = 0, scanSkippedBytes = 0;
+    uint32_t scanPassRegions = 0, scanSkippedRegions = 0;
+    bool scanActive = false;
     LONG64 lastCalls = 0;
     int callersLogged = 0;
 };
@@ -265,6 +270,55 @@ std::vector<uintptr_t> heapScan(uintptr_t vtableX, size_t maxHits, uint32_t maxM
     return hits;
 }
 
+// B4: one time slice of a resumable scan. Returns true when the pass is complete (end of address
+// space or pass budget used). Regions bigger than regionMax are skipped (GPU upload heaps, streaming
+// pools): C++ objects with a vtable live in ordinary heap blocks.
+bool heapScanSlice(Runtime& rt, size_t maxHits, std::vector<uintptr_t>& hits) {
+    const ProbeSpec& p = rt.spec;
+    const size_t kChunk = 1 << 20;
+    static uint8_t* buf = nullptr;
+    if (!buf) buf = static_cast<uint8_t*>(VirtualAlloc(nullptr, kChunk, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    if (!buf) return true;
+    ULONG_PTR stLo = 0, stHi = 0;
+    GetCurrentThreadStackLimits(&stLo, &stHi);
+    const uint64_t passBudget = uint64_t(p.scanMaxMB) << 20;
+    const uint64_t regionMax = uint64_t(p.scanRegionMaxMB) << 20;
+    const uintptr_t needle = rt.vtableX ^ kVtXor;
+    const uint64_t t0 = nowMs();
+    bool timeUp = false, budgetUp = false, hitsFull = false;
+    mem::forEachHeapRegionFrom(rt.scanCursor, [&](uintptr_t base, size_t size) {
+        const uintptr_t end = base + size;
+        uintptr_t from = rt.scanCursor > base ? rt.scanCursor : base;
+        if (from == base) ++rt.scanPassRegions;
+        if (base == reinterpret_cast<uintptr_t>(buf) || (base <= stLo && stLo < end)) { rt.scanCursor = end; return true; }
+        if (regionMax && size > regionMax) {
+            if (from == base) { ++rt.scanSkippedRegions; rt.scanSkippedBytes += size; }
+            rt.scanCursor = end;
+            return true;
+        }
+        for (uintptr_t a = from; a < end; a += kChunk) {
+            size_t n = size_t(std::min<uintptr_t>(kChunk, end - a));
+            rt.scanCursor = a + n;
+            rt.scanPassBytes += n;
+            if (mem::read(a, buf, n)) {
+                for (size_t i = 0; i + 8 <= n; i += 8) {
+                    uintptr_t q;
+                    std::memcpy(&q, buf + i, 8);
+                    if (q == needle) {
+                        hits.push_back(a + i);
+                        if (hits.size() >= maxHits) { hitsFull = true; return false; }
+                    }
+                }
+            }
+            if (rt.scanPassBytes >= passBudget) { budgetUp = true; return false; }
+            if (nowMs() - t0 >= p.scanSliceMs) { timeUp = true; return false; }
+        }
+        return true;
+    });
+    rt.scanPassMs += nowMs() - t0;
+    return !timeUp || budgetUp || hitsFull;
+}
+
 void addInstance(Runtime& rt, uintptr_t addr, uintptr_t expectVt, const char* how) {
     for (const Instance& i : rt.inst)
         if (i.addr == addr) return;
@@ -296,15 +350,31 @@ void acquireInstances(Runtime& rt, uint64_t now) {
         if (rt.inst.empty()) addInstance(rt, a, 0, p.chain.empty() ? "global" : "global chain");
     } else if (p.instance == InstanceMode::Scan) {
         if (now < rt.nextScan || rt.inst.size() >= p.maxInstances) return;
-        uint64_t t0 = nowMs();
-        std::vector<uintptr_t> hits = heapScan(rt.vtableX, p.maxInstances * 4, p.scanMaxMB);
-        plog::line("probe %s: heap scan for vtable found %zu object(s) in %llu ms", p.name.c_str(), hits.size(),
-                   (unsigned long long)(nowMs() - t0));
+        if (!rt.scanActive) {
+            rt.scanActive = true;
+            rt.scanCursor = 0;
+            rt.scanPassBytes = rt.scanPassMs = rt.scanSkippedBytes = 0;
+            rt.scanPassRegions = rt.scanSkippedRegions = 0;
+        }
+        std::vector<uintptr_t> hits;
+        const bool passDone = heapScanSlice(rt, p.maxInstances * 4, hits);
+        size_t added = 0;
         for (uintptr_t h : hits) {
             uintptr_t vt = 0;  // transient copies (stack spills, freed blocks) do not survive a re-read
-            if (mem::readT(h, vt) && vt == (rt.vtableX ^ kVtXor)) addInstance(rt, h, vt, "heap scan");
+            if (mem::readT(h, vt) && vt == (rt.vtableX ^ kVtXor)) { addInstance(rt, h, vt, "heap scan"); ++added; }
         }
-        rt.nextScan = now + (rt.inst.empty() ? 10000 : (p.rescanSec ? uint64_t(p.rescanSec) * 1000 : UINT64_MAX / 2));
+        if (passDone || rt.inst.size() >= p.maxInstances) {
+            plog::line("probe %s: heap scan pass done: %zu instance(s), %llu MB in %u regions read in %llu ms of slices, "
+                       "%u region(s) skipped (%llu MB, over %u MB each), cursor 0x%llX",
+                       p.name.c_str(), rt.inst.size(), (unsigned long long)(rt.scanPassBytes >> 20), rt.scanPassRegions,
+                       (unsigned long long)rt.scanPassMs, rt.scanSkippedRegions,
+                       (unsigned long long)(rt.scanSkippedBytes >> 20), p.scanRegionMaxMB, (unsigned long long)rt.scanCursor);
+            rt.scanActive = false;
+            rt.nextScan = now + (rt.inst.empty() ? 10000 : (p.rescanSec ? uint64_t(p.rescanSec) * 1000 : UINT64_MAX / 2));
+        } else if (added) {
+            plog::line("probe %s: heap scan found %zu object(s) so far (%llu MB read)", p.name.c_str(), added,
+                       (unsigned long long)(rt.scanPassBytes >> 20));
+        }
     } else if (p.instance == InstanceMode::Capture) {
         for (int i = 0; i < CaptureSink::kMaxObjects; ++i) {
             uintptr_t o = uintptr_t(rt.sink.objects[i]);
@@ -487,7 +557,7 @@ DWORD WINAPI worker(LPVOID) {
                 for (size_t i = 0; i < rt.inst.size(); ++i)
                     if (!rt.inst[i].dead) tickInstance(rt, rt.inst[i], i);
                 rt.inst.erase(std::remove_if(rt.inst.begin(), rt.inst.end(), [](const Instance& x) { return x.dead; }), rt.inst.end());
-                rt.nextTick = now + (rt.spec.intervalMs ? rt.spec.intervalMs : g_cfg.intervalMs);
+                rt.nextTick = now + (rt.scanActive ? 50 : (rt.spec.intervalMs ? rt.spec.intervalMs : g_cfg.intervalMs));
             }
             wake = std::min(wake, rt.nextTick);
         }
