@@ -376,6 +376,27 @@ static void testStub() {
     CHECK(readU64(copy.data() + s.originalSlotOffset) == 42);
 }
 
+// The example shipped in dist/ must parse without errors (run from the repo root, as build.sh does).
+static void testShippedIni() {
+    FILE* f = std::fopen("dist/bin64/scripts/QuattroStagioni/probes.ini", "rb");
+    if (!f) {
+        std::printf("  (skipping shipped probes.ini check: not found from cwd)\n");
+        return;
+    }
+    std::string text;
+    char buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    std::fclose(f);
+    ProbeConfig cfg;
+    std::vector<std::string> errors;
+    CHECK(parseProbeConfigText(text, cfg, errors));
+    for (const std::string& e : errors) std::printf("  shipped probes.ini: %s\n", e.c_str());
+    CHECK(errors.empty());
+    CHECK(!cfg.enabled && !cfg.allowHooks);  // shipped off and read-only
+    CHECK(cfg.probes.size() == 13);
+}
+
 int main(int, char**) {
     testPattern();
     testClassify();
@@ -383,6 +404,7 @@ int main(int, char**) {
     testConfig();
     testDiff();
     testStub();
+    testShippedIni();
     std::printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }
