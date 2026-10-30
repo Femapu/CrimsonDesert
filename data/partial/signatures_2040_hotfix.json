@@ -1,0 +1,324 @@
+{
+ "build": {
+  "exe": "CrimsonDesert.exe",
+  "size": 336264088,
+  "pe_timestamp": 1793296370,
+  "version": "2.04.00 hotfix 2026-10-30",
+  "image_base": "0x140000000",
+  "game_code_section": {
+   "name": ".impdata",
+   "rva": "0x1000",
+   "size": "0x5587000"
+  },
+  "denuvo_section": {
+   "name": ".00cfg",
+   "rva": "0x7A32000",
+   "size": "0xC6E8360"
+  },
+  "warning": "Section names are scrambled differently in every build (previous build: .text1/.code). Pick the scan range by RVA 0x1000 / first executable section, never by name."
+ },
+ "scan_rules": [
+  "scan only the game-code section",
+  "?? = wildcard",
+  "every signature below matched exactly once in the game-code section AND exactly once across all executable sections, except WorldSingleton_ref (14 matches, same target)",
+  "none of the targets is a Denuvo jmp-stub nor inside .00cfg"
+ ],
+ "signatures": {
+  "GameTime_Get": {
+   "rva": "0x22a1da0",
+   "pattern": "48 89 5C 24 10 57 48 83 EC 60 48 8B 01 48 8B FA 48 8D 54 24 70 48 8B D9 FF 50 60 0F B7 54 24 70",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 1,
+   "conf": "high",
+   "hook": "optional (read-only use: call it)",
+   "proto": "GameTime* __fastcall GameTime_Get(void* timeOwner, GameTime* out)",
+   "notes": "Returns current game time (region-local override if the owner is in a region with its own clock, else the global published clock extrapolated by real time * rate). 169 callers."
+  },
+  "GameTime_Publish": {
+   "rva": "0xb3efb0",
+   "pattern": "48 89 5C 24 10 44 88 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 F0 FE FF FF 48 81 EC",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 1,
+   "conf": "high",
+   "hook": "detour (probe first)",
+   "proto": "void __fastcall GameTime_Publish(void* timeMgr, const GameTime* t, bool r8, bool r9)",
+   "notes": "Copies the 32-byte GameTime into the published global (one of two copies chosen by TLS byte gs:[0x58]->[0]+0x1EB) then propagates. Callers: SetTimeOfDay wrappers 0xB3E990/0xB3ED00/0xB3EE60 and 0xC9B820 (mgr=[rcx+0x11A0])."
+  },
+  "GameTime_SetTimeOfDay": {
+   "rva": "0xb3ee60",
+   "pattern": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 70 65 48 8B 04 25 58 00 00 00 45 33 E4 48 8B 3D ?? ?? ?? ?? 4C 8B F9 41 0F B6 F1",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 1,
+   "conf": "medium-high",
+   "hook": "call only",
+   "proto": "void __fastcall SetTimeOfDay(void* timeMgr, uint8 hour, uint8 minute, uint8 second, bool noDayAdvance /*stack +0x28*/)",
+   "notes": "Reads current time via GameTime_Get([timeMgr+0x20]->[0]), advances the day if the target time is not later than now (unless flag), then publishes. Caller 0xA2BF9F uses (12,0,0) i.e. set noon."
+  },
+  "GameTime_ToLinear": {
+   "rva": "0x228efd0",
+   "pattern": "8B 41 04 48 6B D0 3C 8B 41 08 48 03 D0 8B 41 0C 4C 6B C2 3C 4C 03 C0 8B 41 10 4D 69 C0 E8 03 00",
+   "matches_all_exec": 1,
+   "kind": "function (leaf, no pdata)",
+   "item": 5,
+   "conf": "high",
+   "hook": "do NOT rely on alone (inlined ~100x)",
+   "proto": "uint64 __fastcall GameTime_ToLinear(const GameTime* t)",
+   "notes": "linear = day*75,600,000 + enc(msOfDay); enc: t<3h -> t/2; 3h..21h -> t-5.4e6; >=21h -> (t+64.8e6)/2. Night (21:00-03:00) runs at 2x speed. Constants inlined in ~110 other functions."
+  },
+  "GameTime_FromLinear": {
+   "rva": "0x228eed0",
+   "pattern": "4C 8B D2 48 B8 E3 B2 16 8F F4 9B 9F 71 48 F7 E2 B8 25 49 92 24 4C 8B D9 4C 8B C2 49 C1 E8 19 41",
+   "matches_all_exec": 1,
+   "kind": "function (leaf)",
+   "item": 5,
+   "conf": "high",
+   "hook": "do NOT rely on alone",
+   "proto": "void __fastcall GameTime_FromLinear(GameTime* out, uint64 linear)",
+   "notes": "Inverse of ToLinear; also writes weekday = day % 7 at +0x14."
+  },
+  "WeatherManager_Update": {
+   "rva": "0x40b71e0",
+   "pattern": "48 8B C4 53 55 56 57 41 54 41 56 41 57 48 81 EC 90 00 00 00 C5 F8 29 70 B8 C5 F8 29 78 A8 C5 78",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 2,
+   "conf": "high",
+   "hook": "detour, post-call writes (main seasonal weather hook)",
+   "proto": "void __fastcall WeatherManager_Update(PAWeatherManager* this, float dt /*xmm1*/)",
+   "notes": "Single caller 0x3DEAAD0 (world env update, this=[world+0xF70]). If this->_isManualWeather(+0x31) applies manual weather, then calls WeatherManager_Compose(this), then consumes [this+0x60]->+0x20 (composed WeatherConstant, pointer is WC+0x28)."
+  },
+  "WeatherManager_Compose": {
+   "rva": "0x40b2e40",
+   "pattern": "48 8B C4 C5 FA 11 48 10 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 38 FF FF FF 48",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 2,
+   "conf": "high",
+   "hook": "detour (post-call alternative to Update)",
+   "proto": "void __fastcall WeatherManager_Compose(PAWeatherManager* this, float /*xmm1*/)",
+   "notes": "Weather layer compositor (CrimsonWeather calls it WeatherCompose). Single caller inside WeatherManager_Update at +0x54."
+  },
+  "Weather_GetRainIntensity": {
+   "rva": "0x40b6380",
+   "pattern": "48 8B 51 60 4C 8B D1 48 85 D2 B9 48 00 00 00 48 8D 42 20 48 0F 44 C1 41 80 7A 31 00 4C 8B 08 4D 8D 81 70 01",
+   "matches_all_exec": 1,
+   "kind": "function (leaf)",
+   "item": 2,
+   "conf": "high",
+   "hook": "detour (cheap override of rain)",
+   "proto": "float __fastcall GetRain(PAWeatherManager* this)",
+   "notes": "Returns WC._rain (+0x198) raw when manual (this+0x31), else multiplied by 1-clamp(([this+0x100]+0xCC - [[this+0x60]+0x28]+0xBC)/k,0,1). Exact-offset signature (sister of GetSnow)."
+  },
+  "Weather_GetSnowIntensity": {
+   "rva": "0x40b6430",
+   "pattern": "48 8B 51 60 4C 8B D1 48 85 D2 B9 48 00 00 00 48 8D 42 20 48 0F 44 C1 41 80 7A 31 00 4C 8B 08 4D 8D 81 6C 01",
+   "matches_all_exec": 1,
+   "kind": "function (leaf)",
+   "item": 2,
+   "conf": "high",
+   "hook": "detour",
+   "proto": "float __fastcall GetSnow(PAWeatherManager* this)",
+   "notes": "Same as GetRain on WC._snow (+0x194)."
+  },
+  "Weather_GetEffectiveWind": {
+   "rva": "0x40b64e0",
+   "pattern": "48 8B 41 60 41 B8 48 00 00 00 48 85 C0 41 B9 60 01 00 00 48 8D 50 20 B8 D4 01 00 00 49 0F 44 D0",
+   "matches_all_exec": 1,
+   "kind": "function (leaf)",
+   "item": 2,
+   "conf": "medium",
+   "hook": "optional",
+   "proto": "float __fastcall GetWind(PAWeatherManager* this)",
+   "notes": "WC._windSpeed(+0x160)+gust, * _altitudeWindRatio * [this+0x100218]."
+  },
+  "Weather_GetDustIntensity": {
+   "rva": "0x40b6570",
+   "pattern": "40 53 48 83 EC 30 48 8B D9 48 8B 89 00 01 00 00 C5 F8 29 74 24 20 48 8B 01 FF 90 00 01 00 00 4C",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 2,
+   "conf": "medium",
+   "hook": "optional",
+   "proto": "float __fastcall GetDust(PAWeatherManager* this)",
+   "notes": "Reads hour-like value via [this+0x100]->vtbl+0x100 and cvars at 0x71A8F90/0x71A8FE0/0x71A9030 (+0x38)."
+  },
+  "WeatherTick": {
+   "rva": "0xe611e0",
+   "pattern": "40 53 48 81 EC C0 00 00 00 C5 F2 58 81 C8 00 00 00 C5 F8 29 B4 24 B0 00 00 00 C5 78 29 54 24 70",
+   "matches_all_exec": 1,
+   "kind": "function",
+   "item": 2,
+   "conf": "medium",
+   "hook": "probe (weather state machine / effects)",
+   "proto": "void __fastcall WeatherTick(WeatherSim* this, float dt /*xmm1*/)",
+   "notes": "CrimsonWeather \"WeatherTick\": accumulates dt, queries rain via [world+0xF70], switches state ids (+0xFC/+0x100), drives effects via [world+0xF78]. Place to bias weather-state choice; semantics need probe."
+  },
+  "GameTimeGlobals_ref": {
+   "rva": "0x22a1e10",
+   "pattern": "C5 FC 10 05 ?? ?? ?? ?? EB 08 C5 FC 10 05 ?? ?? ?? ?? 80 BB 7C 01 00 00",
+   "matches_all_exec": 1,
+   "kind": "anchor (mid-function, inside GameTime_Get)",
+   "item": 1,
+   "conf": "high",
+   "resolve": "A=match+8+i32(match+4) (copy used when TLS flag set); B=match+18+i32(match+14) (default copy)",
+   "notes": "Two published GameTime structs (32 bytes): A=0x6E9C9B8, B=0x6E9C998 in this build."
+  },
+  "WorldEnv_CallWeatherUpdate": {
+   "rva": "0x3deab30",
+   "pattern": "48 8B 89 70 0F 00 00 E8 ?? ?? ?? ?? 48 8B 8F 98 00 00 00",
+   "matches_all_exec": 1,
+   "kind": "anchor (call site)",
+   "item": 2,
+   "conf": "high",
+   "resolve": "call target = match+12+i32(match+8) == WeatherManager_Update; weather manager offset in world object = u32(match+3) (0xF70)",
+   "notes": "Cross-check for WeatherManager_Update."
+  },
+  "WorldSingleton_ref": {
+   "rva": "0xe61298",
+   "pattern": "48 8B 0D ?? ?? ?? ?? 48 8B 01 FF 50 60 48 8B 88 70 0F 00 00 E8",
+   "matches_all_exec": 14,
+   "kind": "anchor (14 matches, all same target)",
+   "item": 2,
+   "conf": "high",
+   "resolve": "global = match+7+i32(match+3) (0x70CAE20); world = (*global)->vtbl[0x60/8](*global); weatherMgr=[world+0xF70]; [world+0xF78]=weather effect/sim owner",
+   "notes": "Accept multiple matches only if all resolve to the same global."
+  },
+  "CVar_SnowStart": {
+   "rva": "0x370eaa",
+   "pattern": "41 B8 7B 53 B3 20 48 8D 0D ?? ?? ?? ??",
+   "matches_all_exec": 1,
+   "kind": "anchor (cvar static init, keyed by name-hash immediate)",
+   "item": 3,
+   "conf": "high (values match Seasons notes: -5/-20/-20/-30)",
+   "resolve": "cvar = match+13+i32(match+9); float value at cvar+0x38 (default copy at +0x3C)",
+   "notes": "default -5 degC"
+  },
+  "CVar_SnowFull": {
+   "rva": "0x370faa",
+   "pattern": "41 B8 14 0D C4 5F 48 8D 0D ?? ?? ?? ??",
+   "matches_all_exec": 1,
+   "kind": "anchor (cvar static init, keyed by name-hash immediate)",
+   "item": 3,
+   "conf": "high (values match Seasons notes: -5/-20/-20/-30)",
+   "resolve": "cvar = match+13+i32(match+9); float value at cvar+0x38 (default copy at +0x3C)",
+   "notes": "default -20 degC"
+  },
+  "CVar_DeepSnow": {
+   "rva": "0x3710aa",
+   "pattern": "41 B8 9C 28 89 C2 48 8D 0D ?? ?? ?? ??",
+   "matches_all_exec": 1,
+   "kind": "anchor (cvar static init, keyed by name-hash immediate)",
+   "item": 3,
+   "conf": "high (values match Seasons notes: -5/-20/-20/-30)",
+   "resolve": "cvar = match+13+i32(match+9); float value at cvar+0x38 (default copy at +0x3C)",
+   "notes": "default -20 degC"
+  },
+  "CVar_DeepSnowFull": {
+   "rva": "0x3711aa",
+   "pattern": "41 B8 55 22 72 0B 48 8D 0D ?? ?? ?? ??",
+   "matches_all_exec": 1,
+   "kind": "anchor (cvar static init, keyed by name-hash immediate)",
+   "item": 3,
+   "conf": "high (values match Seasons notes: -5/-20/-20/-30)",
+   "resolve": "cvar = match+13+i32(match+9); float value at cvar+0x38 (default copy at +0x3C)",
+   "notes": "default -30 degC"
+  }
+ },
+ "derived": {
+  "snow_cvars": {
+   "SnowStart": "0x71A8D10",
+   "SnowFull": "0x71A8D60",
+   "DeepSnow": "0x71A8DB0",
+   "DeepSnowFull": "0x71A8E00",
+   "value_offset": "0x38"
+  },
+  "other_weather_cvars_unknown_role": {
+   "0x71A8B30": 6,
+   "0x71A8B80": 1,
+   "0x71A8BD0": 1,
+   "0x71A8C20": 1,
+   "0x71A8CC0": 5,
+   "0x71A8E50": 600,
+   "0x71A8EA0": 930,
+   "0x71A8EF0": 1400,
+   "0x71A8F40": 30,
+   "0x71A8FE0": 1,
+   "0x71A9030": 0.5,
+   "0x71A9080": 1500,
+   "0x71A90D0": 500
+  },
+  "GameTime_struct": {
+   "size": 32,
+   "+0x00": "u32 day",
+   "+0x04": "u32 hour",
+   "+0x08": "u32 minute",
+   "+0x0C": "u32 second",
+   "+0x10": "u32 millisecond",
+   "+0x14": "u8 weekday (day%7)",
+   "+0x16": "u16 rate (linear game-ms per real ms; expected 24, verify)",
+   "+0x18": "u64 real-clock stamp (ms) of this snapshot"
+  },
+  "PAWeatherManager_fields": {
+   "+0x30": "_updateUI(u8)",
+   "+0x31": "_isManualWeather(u8)",
+   "+0x32": "_reset(u8)",
+   "+0x34": "_climateTemperature",
+   "+0x38": "_climateHumidity",
+   "+0x3C": "_climateWind",
+   "+0x40": "_climateWindDegree",
+   "+0x44": "_currentTemperature",
+   "+0x48": "_currentHumidity",
+   "+0x4C": "_currentWind",
+   "+0x50": "_currentWindExceptAltitude",
+   "+0x54": "_currentWindDegree",
+   "+0x58": "_currentSeaBaseline",
+   "+0x60": "weather layer root; [+0x60]->+0x20 = composed WC+0x28; [+0x60]->+0x28 secondary constant; [+0x60]->+0x30 third",
+   "+0x100": "climate/env sampler object (vtbl+0x100 = hour-like getter, +0xCC float, +0x260 float)",
+   "+0x100218": "float scalar used by wind"
+  },
+  "WeatherConstant_fields(relative to WC base = ptr-0x28)": {
+   "+0x40": "_sunLightIntensity",
+   "+0x48": "_moonLightIntensity",
+   "+0x58": "_rayleighScatteringColor",
+   "+0x60": "_distanceScale",
+   "+0x64": "_heightFogScale",
+   "+0x88": "_sunSizeAngle",
+   "+0x8C": "_sunDirX",
+   "+0x90": "_sunDirY",
+   "+0xA0": "_earthAxisTilt",
+   "+0xA4": "_latitude",
+   "+0x148": "_heightScaleMin",
+   "+0x150": "_enableClimateTexture",
+   "+0x154": "_precipitation",
+   "+0x158": "_cloudiness",
+   "+0x15C": "_humidity",
+   "+0x160": "_windSpeed",
+   "+0x164": "_puddleRate",
+   "+0x16C": "_snowPuddleRate",
+   "+0x170": "_snowAmount",
+   "+0x174": "_snowRate",
+   "+0x178": "_iceRatio",
+   "+0x17C": "_windDegree",
+   "+0x184": "_altitudeWindRatio",
+   "+0x194": "_snow",
+   "+0x198": "_rain",
+   "+0x121..0x145 / +0x19C..0x1A8": "_check__* override flags"
+  },
+  "PAClimateTexture": {
+   "rtti": ".?AVPAClimateTexture@pa@@",
+   "vtable_rva": "0x5E8B7C0",
+   "+0x18": "u32* texels (512*512, bytes A,R,G,B per Seasons notes)",
+   "+0x20": "count",
+   "+0x30/+0x34": "80.0 m per texel",
+   "+0x38/+0x3C": "512 x 512",
+   "constructed_in": [
+    "0x29F24D0",
+    "0x40AE360 (weather manager)",
+    "0x40B7A50"
+   ]
+  }
+ }
+}

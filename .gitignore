@@ -1,0 +1,18 @@
+# Mai committare file del gioco o derivati (repo pubblico, asset Pearl Abyss)
+*.paz
+*.pamt
+*.papgt
+*.pathc
+*.paver
+*.papk
+*.paeid
+*.dds
+*.bin
+*.raw
+*.orig
+tests/data/
+build/
+*.asi
+*.exe
+*.o
+__pycache__/
