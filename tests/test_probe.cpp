@@ -394,7 +394,7 @@ static void testShippedIni() {
     for (const std::string& e : errors) std::printf("  shipped probes.ini: %s\n", e.c_str());
     CHECK(errors.empty());
     CHECK(!cfg.enabled && !cfg.allowHooks);  // shipped off and read-only
-    CHECK(cfg.probes.size() == 13);
+    CHECK(cfg.probes.size() == 16);
 }
 
 int main(int, char**) {
