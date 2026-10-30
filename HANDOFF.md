@@ -63,6 +63,13 @@ completa e i test li fa la CI su GitHub, controllare che l'ultima esecuzione sia
 **Prossimo per la sessione locale:** tappa 5 (probe, `docs/recon/probe_plan.md`), poi riprova
 Autunno/Inverno con il nuovo artifact generando sia `A.qsp` sia `W.qsp`.
 
+## Branch `claude/neve-inverno` (30/10, notte tardi)
+- **Neve d'inverno**: modulo dedicato acceso per default, sezione `[Snow]` (chiavi facoltative) in
+  `QuattroStagioni.ini`; alza `SnowStart`/`SnowFull` solo in inverno con rampa e ripristino.
+  Dettagli e righe di log in `docs/dev/season_engine.md`; test `tests/test_snow.cpp`. Da provare in gioco.
+- **B5** corretto (override `Active=` rilasciato da menu e calendario), da riprovare in gioco.
+- Obiettivi meteo di Stefano per la prossima tappa annotati in `docs/dev/season_engine.md`.
+
 ## Aggiornamento sessione cloud (30/10, notte)
 - **CI**: era rossa da tre esecuzioni. Cause: `test_gen` si aspettava 3688 voci (dopo B2 sono 3686) e
   `tools/make_release.sh` non copiava la cartella `lang/`. Corrette entrambe; B1 e B3 (uniti con

@@ -19,6 +19,7 @@
 #include <string>
 
 #include "imgui.h"
+#include "../apply/snow_win.h"
 #include "../io_hooks.h"
 #include "overlay.h"
 #include "qs_state.h"
@@ -758,6 +759,27 @@ void tabInfo(Frame& f) {
     ImGui::Text(tr("Overlay: %s"), overlayActive() ? tr("attivo") : tr("non agganciato"));
     ImGui::Text(tr("Orologio del gioco: %s"), f.clockHooked ? tr("agganciato") : tr("non agganciato"));
     ImGui::Text(tr("Motore stagioni: %s"), f.engineLive ? tr("attivo") : tr("in attesa"));
+    ImGui::Dummy(ImVec2(0, S(6)));
+    sectionTitle(tr("Neve d'inverno"));
+    {
+        SnowInfo si;
+        if (!snowGetInfo(si)) {
+            ImGui::TextWrapped("%s", tr("Non avviata."));
+        } else {
+            const apply::SnowStatus& ss = si.status;
+            const char* st = ss.state == apply::SnowState::Active ? tr("attiva")
+                             : ss.state == apply::SnowState::Idle ? tr("in attesa dell'inverno")
+                             : ss.state == apply::SnowState::Waiting ? tr("in avvio")
+                                                                      : tr("disattivata");
+            ImGui::Text(tr("Stato: %s (intensità %.0f%%)"), st, ss.intensity * 100.0f);
+            if (ss.attached)
+                ImGui::Text(tr("SnowStart %.1f, SnowFull %.1f (originali %.1f, %.1f)"), ss.current.start, ss.current.full,
+                            ss.original.start, ss.original.full);
+            ImGui::Text(tr("Valori d'inverno: %.1f, %.1f"), si.winterStart, si.winterFull);
+            if (!ss.reason.empty()) dimText(tr("Motivo: %s"), ss.reason.c_str());
+            dimText("%s", tr("Si spegne con \"Neve che si accumula\" (scheda Meteo e luce)."));
+        }
+    }
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Pacchetti stagionali"));
     {

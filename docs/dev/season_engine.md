@@ -39,6 +39,35 @@ Codice portabile e deterministico, senza Win32: lo usano il plugin, il generator
 - Foglie che cadono: iniziano nella coda di fine estate, crescono in autunno, picco all'inizio del
   passaggio autunno -> inverno, spariscono a metà del plateau invernale.
 
+## Neve d'inverno nel gioco (soglie SnowStart / SnowFull)
+Codice: `src/core/apply/snow.*` (portabile, `tests/test_snow.cpp`), `src/win/apply/snow_win.*`.
+Il gioco ha due variabili globali (`pa::GlobalVariableFloat` nella sezione dati dell'exe, valore a
++0x38, default a +0x3C, vanilla -5 e -20, trovate con le probe `cvar_snow_start` e `cvar_snow_full`):
+mostra neve dove la temperatura del clima è <= SnowStart e copertura piena a <= SnowFull (significato
+dedotto, da confermare in gioco). Con i valori vanilla nessuna zona è abbastanza fredda.
+- `winterIntensity` (0..1, calendario della regione temperata): sale nella seconda metà della coda
+  A>W, vale 1 in inverno, scende nella prima metà della coda W>S, 0 altrove (smoothstep, continua).
+- Valori scritti = originali + intensità x (valori d'inverno - originali); intensità 0 = originali
+  esatti. Velocità massima `MaxRate` (0,5 gradi al secondo reale): mai salti a metà frame.
+- Default `[Snow]`: `WinterSnowStart=2`, `WinterSnowFull=-6`, `MaxSnowStart=4` (limite di sicurezza,
+  massimo assoluto 10), `SnowFull` sempre almeno 1 grado sotto `SnowStart`. Il deserto resta senza
+  neve perché la sua temperatura di clima è molto sopra qualunque soglia ammessa.
+- Sicurezze: exe in `known_builds.h` e controllo di versione riuscito, firma univoca, classe RTTI
+  `GlobalVariableFloat`, valori in [-60, +30] e uguali al default al primo aggancio; se il gioco o
+  un'altra mod cambiano i valori per 3 tick di fila, la neve si spegne e ripristina gli originali.
+  Ripristino anche con "Neve che si accumula" spento nel menu F5 e allo scaricamento del plugin.
+- Log: `snow: SnowStart found ... class ...`, `snow: attached, originals ...`, `snow: SnowStart a -> b,
+  SnowFull c -> d (...), Inverno 30%, winter intensity 1.00` (al massimo ogni 60 s), `snow: DISABLED: ...`.
+
+## Obiettivi meteo di Stefano (prossima tappa)
+Da realizzare con pesi in `[Weather]` / tabella per fase, tutte le probabilità regolabili da ini:
+- Primavera: soprattutto sole, poca pioggia.
+- Estate: poca pioggia, ma temporali estivi.
+- Fine estate: poca pioggia, qualche temporale.
+- Autunno: pioggia forte frequente E temporali.
+- Inverno: precipitazioni come neve solo dove fa freddo, mai nel deserto.
+- Niente neve fuori dall'inverno.
+
 ## Come lo usa il plugin (ogni frame o ogni ~0,5 s)
 ```cpp
 day = cfg.advance(day, secondiReali, oreDiGioco);  // secondo DaySource; salvare `day` (l'orologio del gioco riparte da 0 al caricamento)

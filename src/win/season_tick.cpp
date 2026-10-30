@@ -54,6 +54,34 @@ bool isSeasonSection(const std::string& line) {
     return s.compare(a, 9, "[seasons]") == 0 || s.compare(a, 8, "[region.") == 0;
 }
 
+// B5: empties a non-empty "Active=" inside [Packs] (keeps the line, its comments and every other key).
+// Returns true when something changed.
+bool clearPacksActive(std::string& ini) {
+    std::istringstream in(ini);
+    std::string line, out;
+    bool inPacks = false, changed = false;
+    while (std::getline(in, line)) {
+        bool cr = !line.empty() && line.back() == '\r';
+        if (cr) line.pop_back();
+        std::string low;
+        for (char c : line) low += char(tolower(static_cast<unsigned char>(c)));
+        size_t a = low.find_first_not_of(" \t");
+        if (a != std::string::npos && low[a] == '[') inPacks = low.compare(a, 7, "[packs]") == 0;
+        else if (inPacks && a != std::string::npos && low.compare(a, 6, "active") == 0) {
+            size_t eq = low.find('=', a);
+            if (eq != std::string::npos && low.find_first_not_of(" \t", a + 6) == eq &&
+                line.find_first_not_of(" \t", eq + 1) != std::string::npos) {
+                line = line.substr(0, eq + 1);
+                changed = true;
+            }
+        }
+        out += line + (cr ? "\r\n" : "\n");
+    }
+    if (!ini.empty() && ini.back() != '\n' && !out.empty()) out.pop_back();
+    if (changed) ini = out;
+    return changed;
+}
+
 // Drops [Seasons] and [Region.*] (with their comment lines just above) and appends the new text.
 std::string replaceSeasonSections(const std::string& ini, const std::string& seasonText) {
     std::istringstream in(ini);
@@ -119,6 +147,22 @@ void tickLoop() {
     QueryPerformanceFrequency(&f);
     QueryPerformanceCounter(&prev);
     double sinceSave = 0;
+    // B3/B5: [Packs] Active= forces one pack at startup only until the calendar changes stage or the
+    // user picks a season/day from the F5 menu; then the per-texture calendar takes over.
+    bool iniOverride = g_packs && io::packsStatus().forced;
+    std::string overrideBase;  // temperate stage when the override was first seen
+    auto releaseOverride = [&](const char* why) {
+        if (!iniOverride) return;
+        iniOverride = false;
+        if (!io::packsStatus().forced) return;  // already gone
+        const std::string was = io::activePackStage();
+        std::string err;
+        if (io::setActivePack("", &err))
+            QS_INFO("packs: [Packs] Active=%s released (%s): back to the calendar, \"Salva\" in the menu empties Active",
+                    was.empty() ? "vanilla" : was.c_str(), why);
+        else
+            QS_ERR("packs: could not release [Packs] Active=%s (%s): %s", was.c_str(), why, err.c_str());
+    };
     while (!g_stop.load()) {
         Sleep(500);
         QueryPerformanceCounter(&now);
@@ -128,9 +172,15 @@ void tickLoop() {
         float clockHours = -1.0f, hourOfDay = -1.0f;
         try {
             if (shared().configDirty.exchange(false)) {
-                std::lock_guard<std::mutex> lk(shared().mutex);
-                cfg = shared().config;
+                season::SeasonConfig before = cfg;
+                {
+                    std::lock_guard<std::mutex> lk(shared().mutex);
+                    cfg = shared().config;
+                }
                 engine.configure(cfg);
+                // a season or day chosen in the menu (calendar source or manual day changed)
+                if (cfg.daySource != before.daySource || cfg.startDay != before.startDay)
+                    releaseOverride("season chosen from the F5 menu");
             }
             if (cfg.daySource == season::DaySource::Manual) {
                 day = double(cfg.yearIndex(day)) * cfg.yearLength() + cfg.startDay;
@@ -153,6 +203,10 @@ void tickLoop() {
             else engine.update(day, clockHours);
             const season::SeasonState& st = engine.state();
             std::string stage = st.stage[int(season::Region::Temperate)].id();
+            if (iniOverride) {
+                if (overrideBase.empty()) overrideBase = stage;
+                else if (stage != overrideBase) releaseOverride(("calendar moved to stage " + stage).c_str());
+            }
             // Per-texture packs: cheap when nothing changes, opens/closes packs when needed.
             if (g_packs) io::setSeasonDay(day, cfg);
             std::string packsText;
@@ -234,6 +288,8 @@ bool seasonSave(std::string& error) {
         cfg = shared().config;
     }
     std::string text = replaceSeasonSections(readText(g_iniPath), cfg.save());
+    bool clearedActive = false;
+    if (g_packs && !io::packsStatus().forced) clearedActive = clearPacksActive(text);  // B5
     if (!writeTextAtomic(g_iniPath, text)) {
         error = "impossibile scrivere QuattroStagioni.ini";
         return false;
@@ -244,7 +300,7 @@ bool seasonSave(std::string& error) {
         day = g_day;
     }
     saveDay(day);
-    QS_INFO("season config saved from the menu");
+    QS_INFO("season config saved from the menu%s", clearedActive ? " ([Packs] Active emptied: the calendar chooses the packs)" : "");
     return true;
 }
 

@@ -5,6 +5,10 @@ Codice: `src/core/apply/` (logica portabile, testata in `tests/test_apply.cpp`),
 commentato: `dist/bin64/scripts/QuattroStagioni/targets.ini`. Prova completa sotto wine:
 `tests/apply_fake/run.sh`.
 
+Eccezione: la neve d'inverno (soglie `SnowStart`/`SnowFull`) NON passa da `targets.ini`: ha un
+modulo dedicato acceso per default (`src/core/apply/snow.*`, `src/win/apply/snow_win.*`, sezione
+`[Snow]` di `QuattroStagioni.ini`), descritto in `docs/dev/season_engine.md`.
+
 Idea: le probe (`docs/recon/probe_plan.md`) trovano dove stanno nel gioco orologio, velocità del
 tempo, meteo, neve, luce e particelle. Una volta noti oggetto e offset, la sessione locale compila
 `bin64\scripts\QuattroStagioni\targets.ini` e rilancia il gioco: niente ricompilazione.

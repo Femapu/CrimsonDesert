@@ -48,3 +48,20 @@ estratti).
   nessun pacchetto, cioè vanilla, oppure il pacchetto disponibile più vicino nel ciclo, scritto
   chiaramente nel log) e far rispettare `Active` finché il calendario non cambia stadio o finché
   l'utente non sceglie dal menu.
+
+## B5. Con `[Packs] Active=A` la scelta di una stagione dal menu non toglie il pacchetto forzato (corretto, da riprovare in gioco)
+
+- **Dove**: `src/win/season_tick.cpp` (rilascio dell'override), `src/win/io_hooks.cpp` (`setActivePack`).
+- **Sintomo** (test del 30/10): con `Active=A` nell'ini, scegliendo una stagione dal menu F5
+  (modalità manuale) il plugin continua a servire il pacchetto A per tutte le texture, mentre il menu
+  mostra la nuova stagione. La correzione di B3 non era stata davvero collegata: nulla toglieva
+  l'override dopo l'avvio.
+- **Correzione**: il tick delle stagioni ricorda se all'avvio c'era un override da ini e lo toglie
+  (`setActivePack("")`) appena il calendario cambia stadio rispetto al primo tick, oppure quando dal
+  menu cambiano fonte del giorno o giorno manuale (scelta di una stagione). Riga di log:
+  `packs: [Packs] Active=A released (season chosen from the F5 menu): back to the calendar ...`
+  (oppure `(calendar moved to stage ...)`). "Salva" nel menu, se l'override non è più attivo, svuota
+  `Active=` nella sezione `[Packs]` (`season config saved from the menu ([Packs] Active emptied ...)`).
+- **Da riprovare**: avvio con `Active=A`, poi Inverno dal menu: il log deve mostrare la riga
+  `released` e il riepilogo pacchetti non deve più dire `pacchetto fisso A`.
+
