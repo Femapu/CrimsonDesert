@@ -46,4 +46,10 @@ profile, looks, tier, region, asset`. Le texture con lo stesso `asset` (colore, 
 devono usare lo stesso seme: `seed = lookup3(asset, 0xC5EDE)`.
 
 ## Modifiche ai contratti
-(nessuna)
+- 30/10, flusso texture + ricette: solo AGGIUNTE, nessuna firma esistente cambiata.
+  `texture.h`: `blockBytes`, `surfaceSize`, `mipDim`, `decodeSurface`, `encodeSurface`, `encodeMipRef`,
+  `MipOptions` + `rebuildMips(Texture&, const MipOptions&)`, `downsample`, `alphaCoverage`,
+  `matchAlphaCoverage`, `recolorSurface`, `fitMip` (con `FitResult`, `RecolorFallback`), `lz4BestSize`.
+  `recipe.h`: `RecipeBook::applyPalette`, `profiles`, `hasProfile`, `changesLook`, `pureStage`,
+  `PaletteBinding` + `paletteThunk`, `seedForAsset`, `lookFromString`.
+  Dettagli e uso per il generatore: `docs/dev/texture_recipes.md`.
