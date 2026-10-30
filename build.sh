@@ -16,7 +16,7 @@ mkdir -p build build/win
 
 # ---------------------------------------------------------------- module extras
 EXTRA_CORE_FLAGS=""        # e.g. -Ithird_party/<lib>
-EXTRA_WIN_FLAGS=""
+EXTRA_WIN_FLAGS=""         # overlay: see the IMGUI block below
 EXTRA_WIN_LIBS=""          # e.g. -ld3dcompiler (prefer runtime loading to keep imports minimal)
 
 # ---------------------------------------------------------------- sources
@@ -32,6 +32,11 @@ if [[ -f third_party/imgui/imgui.cpp ]]; then
          third_party/imgui/imgui_widgets.cpp third_party/imgui/backends/imgui_impl_win32.cpp
          third_party/imgui/backends/imgui_impl_dx12.cpp)
   EXTRA_WIN_FLAGS+=" -Ithird_party/imgui -Ithird_party/imgui/backends"
+  # overlay: MSVC ABI for COM methods returning structs (GetCPUDescriptorHandleForHeapStart...), no
+  # ImGui asserts in the game (a failed IM_ASSERT would abort), no shell32/XInput dependencies
+  EXTRA_WIN_FLAGS+=" -DWIDL_EXPLICIT_AGGREGATE_RETURNS -DIM_ASSERT(_EXPR)=((void)0) -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS"
+  EXTRA_WIN_FLAGS+=" -DIMGUI_IMPL_WIN32_DISABLE_GAMEPAD"
+  EXTRA_WIN_LIBS+=" -lgdi32 -ldwmapi"
 fi
 WARN="-Wall -Wextra -Wno-unused-parameter"
 INC="-Isrc/core -Ithird_party/lz4 $EXTRA_CORE_FLAGS"
