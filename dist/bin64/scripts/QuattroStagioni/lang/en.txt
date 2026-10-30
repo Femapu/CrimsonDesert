@@ -1,0 +1,364 @@
+# QuattroStagioni - English interface
+# Format: blocks separated by a blank line; line 1 = Italian source, line 2 = translation.
+# To add a language, copy this file to <code>.txt (de, fr, es, pt-br, ru, pl, ja, ko, zh-hans...)
+# and translate the second line of each block. Keep %d, %.1f, %s and %% exactly as they are.
+
+Primavera
+Spring
+
+Estate
+Summer
+
+Fine estate
+Late summer
+
+Autunno
+Autumn
+
+Inverno
+Winter
+
+Temperata
+Temperate
+
+Nord freddo
+Cold north
+
+Palude e giungla
+Swamp and jungle
+
+Acquatica
+Aquatic
+
+Deserto
+Desert
+
+Abisso
+Abyss
+
+ciclo completo
+full cycle
+
+inverno lungo e anticipato
+long, early winter
+
+sempreverde, solo umidità
+evergreen, humidity only
+
+variazioni minime
+minimal changes
+
+sempre vanilla
+always vanilla
+
+giorno su %d
+day of %d
+
+Oggi
+Today
+
+giorno %.1f di %.0f, %d%% della fase
+day %.1f of %.0f, %d%% of the season
+
+Fase
+Season
+
+Prossima fase:
+Next season:
+
+tra %.1f giorni
+in %.1f days
+
+Stadio visivo (Temperata): %s
+Visual stage (Temperate): %s
+
+contatore continuo: giorno %.2f
+continuous counter: day %.2f
+
+Motore stagioni in attesa: i valori dal vivo compariranno qui.
+Season engine waiting: live values will appear here.
+
+Sorgente del giorno
+Day source
+
+Orologio di gioco
+Game clock
+
+Tempo di gioco
+Play time
+
+Manuale
+Manual
+
+Orologio del gioco non ancora agganciato: si usa il tempo di gioco finché non è disponibile.
+Game clock not hooked yet: play time is used until it is available.
+
+%.0f minuti reali per giorno
+%.0f real minutes per day
+
+giorno %.1f
+day %.1f
+
+segue l'orologio del gioco
+follows the game clock
+
+Vai all'inizio di
+Jump to the start of
+
+Passa a modalità manuale, giorno %.0f
+Switches to manual mode, day %.0f
+
+Lunghezza delle fasi
+Season lengths
+
+%.0f giorni
+%.0f days
+
+Un anno dura %.0f giorni di gioco. L'estate è il gioco originale.
+A year lasts %.0f game days. Summer is the original game.
+
+Transizioni
+Transitions
+
+Coda di transizione
+Transition tail
+
+%.0f%% di ogni fase
+%.0f%% of each season
+
+Stadi intermedi
+Intermediate stages
+
+cambio netto
+hard switch
+
+%d stadi
+%d stages
+
+Più stadi: passaggio più graduale, ma più spazio su disco per i pacchetti.
+More stages: smoother change, but more disk space for the packs.
+
+Varietà per pianta
+Per-plant variety
+
++/- %.1f giorni
++/- %.1f days
+
+Sposta il calendario di ogni albero, così un bosco non cambia tutto insieme.
+Shifts the calendar of every tree, so a forest does not change all at once.
+
+Ogni regione può essere spenta, anticipata o ritardata. Deserto e Abisso restano sempre vanilla di default.
+Each region can be turned off, moved earlier or later. Desert and Abyss stay vanilla by default.
+
+esclusa di default: attivarla è sperimentale
+excluded by default: enabling it is experimental
+
+esclusa di default (sempre vanilla)
+excluded by default (always vanilla)
+
+anticipo %.1f giorni
+%.1f days earlier
+
+ritardo %+.1f giorni
+%+.1f days later
+
+nessuno spostamento
+no shift
+
+%s: durata x%.2f in questa regione (trascina)
+%s: length x%.2f in this region (drag)
+
+Cosa controlla la mod
+What the mod controls
+
+Meteo stagionale
+Seasonal weather
+
+Pesi del meteo per stagione: estati limpide, autunni piovosi, inverni nevosi.
+Weather weights per season: clear summers, rainy autumns, snowy winters.
+
+Neve che si accumula
+Snow that builds up
+
+La copertura cresce quando nevica sotto zero e si scioglie sopra zero.
+Snow cover grows when it snows below zero and melts above zero.
+
+Luce stagionale
+Seasonal light
+
+Sole più basso e toni freddi in inverno, più caldi in autunno.
+Lower sun and cold tones in winter, warmer in autumn.
+
+Durata del giorno
+Day length
+
+Giornate più corte in inverno, più lunghe in estate.
+Shorter days in winter, longer in summer.
+
+Particelle
+Particles
+
+Foglie che cadono in autunno, fiato visibile al freddo.
+Falling leaves in autumn, visible breath in the cold.
+
+Regolazioni
+Tuning
+
+accumulo %.2f / ora di gioco
+build-up %.2f / game hour
+
+scioglimento %.2f / ora
+melting %.2f / hour
+
+latitudine virtuale %.0f gradi
+virtual latitude %.0f degrees
+
+Dal vivo
+Live
+
+Motore stagioni in attesa: nessun valore ancora.
+Season engine waiting: no values yet.
+
+fiato visibile
+visible breath
+
+temperatura
+temperature
+
+Manto nevoso
+Snow cover
+
+Sereno
+Clear
+
+Nuvoloso
+Cloudy
+
+Pioggia
+Rain
+
+Temporale
+Storm
+
+Neve
+Snow
+
+Vento
+Wind
+
+Alba %s, tramonto %s
+Sunrise %s, sunset %s
+
+Versioni
+Versions
+
+Interfaccia: Dear ImGui %s (MIT), hook: MinHook (BSD)
+Interface: Dear ImGui %s (MIT), hooks: MinHook (BSD)
+
+Stato
+Status
+
+nessun messaggio
+no messages
+
+Overlay: %s
+Overlay: %s
+
+attivo
+active
+
+non agganciato
+not hooked
+
+Orologio del gioco: %s
+Game clock: %s
+
+agganciato
+hooked
+
+Motore stagioni: %s
+Season engine: %s
+
+in attesa
+waiting
+
+Pacchetti stagionali
+Season packs
+
+Pacchetti non attivi (controllo di versione fallito o cartella packs assente).
+Packs not active (version check failed or packs folder missing).
+
+Pacchetti aperti: %d (%s)
+Open packs: %d (%s)
+
+nessuno
+none
+
+Texture servite: %u di %u
+Textures served: %u of %u
+
+Texture da uno stadio precedente: %u
+Textures from an earlier stage: %u
+
+Pacchetto fisso: %s
+Fixed pack: %s
+
+vanilla
+vanilla
+
+Stadi mancanti: nessuno
+Missing stages: none
+
+Stadi mancanti: %s (genera i pacchetti con qs_gen)
+Missing stages: %s (generate the packs with qs_gen)
+
+Ultimo problema: %s
+Last problem: %s
+
+I pacchetti si creano sul tuo PC con qs_gen dai file del gioco: nessun asset viene distribuito.
+Packs are created on your PC by qs_gen from the game files: no game assets are distributed.
+
+File di log
+Log file
+
+Copia percorso
+Copy path
+
+%s, giorno %d di %d
+%s, day %d of %d
+
+F5 o Esc per chiudere. Le modifiche si applicano subito.
+F5 or Esc to close. Changes apply immediately.
+
+Salva
+Save
+
+Impostazioni salvate in QuattroStagioni.ini
+Settings saved to QuattroStagioni.ini
+
+Salvataggio non riuscito:
+Saving failed:
+
+Salvataggio non ancora collegato in questa versione
+Saving is not connected in this version
+
+nessuna funzione di salvataggio
+no save function
+
+Calendario
+Calendar
+
+Stagioni
+Seasons
+
+Regioni
+Regions
+
+Meteo e luce
+Weather and light
+
+Info
+Info
+
+Premi %s per il menu
+Press %s for the menu

@@ -1,0 +1,25 @@
+# Mai committare file del gioco o derivati (repo pubblico, asset Pearl Abyss)
+*.paz
+*.pamt
+*.papgt
+*.pathc
+*.paver
+*.papk
+*.paeid
+*.dds
+*.bin
+*.raw
+*.orig
+tests/data/
+build/
+*.asi
+*.exe
+*.o
+__pycache__/
+
+# copie di lavoro degli agenti (worktree locali)
+.claude/worktrees/
+
+# artifact CI scaricato e output dei test locali (sessione locale)
+dist-ci/
+local-out/

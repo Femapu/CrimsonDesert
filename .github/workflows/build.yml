@@ -1,0 +1,30 @@
+# Builds the plugin, the Windows tools and runs the unit tests on every push.
+# The artifact "QuattroStagioni-dist" is the same tree as the release zip (tools/make_release.sh,
+# no game data inside): qs_install.exe, tools, bin64 folder, recipes and user docs.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mingw-w64 zip
+      - name: Build and test
+        run: ./build.sh test
+      - name: Assemble release tree
+        run: tools/make_release.sh "" build/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QuattroStagioni-dist
+          path: build/release/QuattroStagioni-*/
+          retention-days: 30

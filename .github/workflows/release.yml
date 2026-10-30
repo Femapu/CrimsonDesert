@@ -1,0 +1,52 @@
+# Publishes a GitHub Release when a version tag is pushed (git tag v0.4.0 && git push origin v0.4.0).
+# Builds everything, runs the unit tests, assembles the end user zip with tools/make_release.sh and
+# attaches it (plus SHA256SUMS) to the release. The notes come from the matching CHANGELOG.md section.
+# The zip holds code, recipes and documents only: no game files (make_release.sh refuses them).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mingw-w64 zip
+      - name: Build and test
+        run: ./build.sh test
+      - name: Assemble release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          tools/make_release.sh "$VERSION" build/release
+          cp "build/release/QuattroStagioni-$VERSION/SHA256SUMS" "build/release/SHA256SUMS-$VERSION.txt"
+          # release notes: the CHANGELOG section of this version (falls back to a short text)
+          awk -v v="$VERSION" '
+            /^## / { if (p) exit; if (index($0, "[" v "]") || index($0, " " v)) { p = 1; next } }
+            p { print }' CHANGELOG.md > build/release/notes.md
+          [ -s build/release/notes.md ] || echo "QuattroStagioni $VERSION" > build/release/notes.md
+          printf '\n---\nInstallazione: docs/INSTALLAZIONE.md nello zip. Nessun file del gioco incluso: i pacchetti stagionali si generano sul tuo PC.\n' >> build/release/notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PRE=""
+          case "$VERSION" in *-*|0.*) PRE="--prerelease" ;; esac
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "build/release/QuattroStagioni-$VERSION.zip" \
+              "build/release/SHA256SUMS-$VERSION.txt" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "build/release/QuattroStagioni-$VERSION.zip" \
+              "build/release/SHA256SUMS-$VERSION.txt" --title "QuattroStagioni $VERSION" \
+              --notes-file build/release/notes.md $PRE
+          fi
