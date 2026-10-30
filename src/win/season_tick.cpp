@@ -9,6 +9,7 @@
 #include <sstream>
 #include <thread>
 
+#include "apply/apply.h"
 #include "io_hooks.h"
 #include "log.h"
 #include "qs_state.h"
@@ -124,6 +125,7 @@ void tickLoop() {
         double dt = double(now.QuadPart - prev.QuadPart) / double(f.QuadPart);
         prev = now;
         if (dt > 5.0) dt = 5.0;  // suspended / debugger: do not jump the calendar
+        float clockHours = -1.0f, hourOfDay = -1.0f;
         try {
             if (shared().configDirty.exchange(false)) {
                 std::lock_guard<std::mutex> lk(shared().mutex);
@@ -133,13 +135,22 @@ void tickLoop() {
             if (cfg.daySource == season::DaySource::Manual) {
                 day = double(cfg.yearIndex(day)) * cfg.yearLength() + cfg.startDay;
             } else {
-                // GameClock is not hooked yet (probes, A1-b): fall back to playtime until it is.
-                season::SeasonConfig c = cfg;
-                if (c.daySource == season::DaySource::GameClock && !shared().gameClockHooked.load())
-                    c.daySource = season::DaySource::Playtime;
-                day = c.advance(day, dt, -1.0);
+                // GameClock: game hours from targets.ini (src/win/apply/) when a clock target is active,
+                // otherwise playtime until it is.
+                double gameDay = 0, gameHours = 0;
+                if (cfg.daySource == season::DaySource::GameClock && applyReadGameClock(gameDay, gameHours)) {
+                    day = cfg.advance(day, dt, gameHours);
+                    if (!applyGameHourOfDay(hourOfDay)) hourOfDay = -1.0f;
+                    clockHours = float(gameHours);
+                } else {
+                    season::SeasonConfig c = cfg;
+                    if (c.daySource == season::DaySource::GameClock) c.daySource = season::DaySource::Playtime;
+                    day = c.advance(day, dt, -1.0);
+                    clockHours = -1.0f;
+                }
             }
-            engine.update(day, -1.0f);
+            if (hourOfDay >= 0.0f) engine.update(day, clockHours, hourOfDay);
+            else engine.update(day, clockHours);
             const season::SeasonState& st = engine.state();
             std::string stage = st.stage[int(season::Region::Temperate)].id();
             // Per-texture packs: cheap when nothing changes, opens/closes packs when needed.

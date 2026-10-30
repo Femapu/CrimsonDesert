@@ -11,6 +11,7 @@
 // read game state, and the probes are what finds the systems of a new game build.
 #include <windows.h>
 
+#include "apply/apply.h"
 #include "io_hooks.h"
 #include "lang.h"
 #include "log.h"
@@ -25,7 +26,7 @@ namespace {
 const char* const kVersion = "0.3.0 (season engine, packs, F5 menu, probes)";
 HMODULE g_self = nullptr;
 volatile LONG g_initDone = 0;
-bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false;
+bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false, g_applyStarted = false;
 
 void initialize() {
     if (InterlockedExchange(&g_initDone, 1) != 0) return;  // run once
@@ -64,11 +65,12 @@ void initialize() {
         qs::menuSetSaveCallback(&qs::seasonSave);
         g_overlayStarted = qs::overlayStart();
         g_probeStarted = qs::probeStart();
+        g_applyStarted = qs::applyStart();  // targets.ini; off by default
         QueryPerformanceCounter(&t1);
-        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s",
+        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s",
                 double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart), hooked ? "on" : "off",
                 packs ? "on" : "off", g_seasonStarted ? "on" : "off", g_overlayStarted ? "on" : "off",
-                g_probeStarted ? "on" : "off");
+                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off");
         qs::log::flush();
     } catch (...) {
         QS_ERR("unexpected exception during startup: plugin inactive");
@@ -104,6 +106,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
             if (g_initDone && !reserved) {  // FreeLibrary: final summary, remove hooks, close the log
                 qs::io::logSummary("unload");
                 QS_INFO("QuattroStagioni unloading");
+                if (g_applyStarted) qs::applyStop();      // restores originals, before probeStop
                 if (g_probeStarted) qs::probeStop();      // before io::uninstall (MH_Uninitialize)
                 if (g_overlayStarted) qs::overlayStop();
                 if (g_seasonStarted) qs::seasonStop();
