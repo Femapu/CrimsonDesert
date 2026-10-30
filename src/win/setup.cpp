@@ -9,6 +9,8 @@
 //      same length and its own hashes, and for per-mip DDS the 128-byte header (with the mip stored
 //      sizes that .pathc also records) is identical.
 // Steps 1-2 failing disables everything; step 3 failing disables only that entry.
+// Season packs (.qsp from qs_gen) are checked by loadVerifiedPack: integrity, game build, pamt hashes
+// and paz sizes; original bytes are verified per read by the pack server (core/pack/serve.h).
 #include "setup.h"
 
 #include <windows.h>
@@ -19,7 +21,9 @@
 #include "../core/ini.h"
 #include "../core/lookup3.h"
 #include "../core/lz4_exact.h"
+#include "../core/gen/stage.h"
 #include "../core/manifest.h"
+#include "../core/pack/qsp_io.h"
 #include "../core/pamt.h"
 #include "log.h"
 #include "winutil.h"
@@ -176,7 +180,120 @@ Config loadConfig(const std::wstring& iniPath) {
     c.summaryIntervalSeconds = int(ini.getInt("General", "SummaryIntervalSeconds", 30));
     c.testMode = ini.getInt("Debug", "TestMode", 0) != 0;
     c.gameRootOverride = widen(ini.get("Debug", "GameRootOverride"));
+    c.activePack = ini.get("Packs", "Active");
+    if (ini.has("Packs", "Folder") && !ini.get("Packs", "Folder").empty()) c.packFolder = widen(ini.get("Packs", "Folder"));
+    c.packCacheMB = int(ini.getInt("Packs", "CacheMB", 64));
+    if (c.packCacheMB < 0) c.packCacheMB = 0;
+    if (c.packCacheMB > 4096) c.packCacheMB = 4096;
     return c;
+}
+
+// ---- season packs --------------------------------------------------------------------------------
+namespace {
+
+// Random access reads of a pack with explicit offsets (thread safe, no shared file pointer).
+class WinFileSource : public pack::ByteSource {
+public:
+    explicit WinFileSource(HANDLE h, uint64_t size) : h_(h), size_(size) {}
+    ~WinFileSource() override { CloseHandle(h_); }
+    bool readAt(uint64_t offset, void* dst, size_t n) override {
+        uint8_t* p = static_cast<uint8_t*>(dst);
+        while (n > 0) {
+            DWORD chunk = n > (1u << 30) ? (1u << 30) : DWORD(n), got = 0;
+            OVERLAPPED ov = {};
+            ov.Offset = DWORD(offset);
+            ov.OffsetHigh = DWORD(offset >> 32);
+            if (!ReadFile(h_, p, chunk, &got, &ov) || got != chunk) return false;
+            p += chunk;
+            offset += chunk;
+            n -= chunk;
+        }
+        return true;
+    }
+    uint64_t size() const override { return size_; }
+
+private:
+    HANDLE h_;
+    uint64_t size_;
+};
+
+std::wstring groupDir(const std::wstring& root, const std::string& group) {
+    std::wstring g = widen(group);
+    for (wchar_t& c : g) if (c == L'/') c = L'\\';
+    return joinPath(root, g);
+}
+
+}  // namespace
+
+std::string gameBuildIdOf(const std::wstring& gameRoot) {
+    const std::wstring exe = joinPath(gameRoot, L"bin64\\CrimsonDesert.exe");
+    uint64_t size = 0;
+    uint32_t ts = 0;
+    if (!fileSize(exe, size) || !readPeTimestamp(exe, ts)) return "unreadable";
+    return pack::gameBuildId(size, ts);
+}
+
+std::wstring resolvePackPath(const std::wstring& packsDir, const std::string& stageOrFile) {
+    gen::StageSpec st;
+    std::wstring name;
+    const bool looksLikeFile = stageOrFile.find_first_of("\\/:") != std::string::npos ||
+                               (stageOrFile.size() > 4 && stageOrFile.compare(stageOrFile.size() - 4, 4, ".qsp") == 0);
+    if (!looksLikeFile && gen::parseStage(stageOrFile, 16, st)) name = widen(st.fileName());
+    else name = widen(stageOrFile);
+    if (name.size() > 1 && (name[1] == L':' || (name[0] == L'\\' && name[1] == L'\\'))) return name;  // absolute
+    return joinPath(packsDir, name);
+}
+
+std::shared_ptr<pack::PackServer> loadVerifiedPack(const std::wstring& gameRoot, const std::wstring& packPath,
+                                                   size_t cacheBytes, std::string& why) {
+    try {
+        HANDLE h = CreateFileW(packPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                               FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, nullptr);
+        if (h == INVALID_HANDLE_VALUE) { why = "cannot open " + narrow(packPath); return nullptr; }
+        LARGE_INTEGER sz;
+        if (!GetFileSizeEx(h, &sz)) { CloseHandle(h); why = "cannot size " + narrow(packPath); return nullptr; }
+        std::shared_ptr<pack::PackServer> srv(new pack::PackServer());
+        std::string err;
+        if (!srv->open(std::unique_ptr<pack::ByteSource>(new WinFileSource(h, uint64_t(sz.QuadPart))), cacheBytes, &err)) {
+            why = "pack rejected: " + err;
+            return nullptr;
+        }
+        const pack::Header& hd = srv->reader().header();
+        const std::string build = gameBuildIdOf(gameRoot);
+        if (hd.gameBuild != build) {
+            why = "pack was generated for game build \"" + hd.gameBuild + "\", installed is \"" + build + "\": regenerate it";
+            return nullptr;
+        }
+        for (const auto& g : hd.pamtHashes) {
+            std::vector<uint8_t> data;
+            if (!readWholeFile(joinPath(groupDir(gameRoot, g.first), L"0.pamt"), data) || data.size() < 12) {
+                why = "cannot read " + g.first + "/0.pamt";
+                return nullptr;
+            }
+            uint32_t stored;
+            std::memcpy(&stored, data.data(), 4);
+            const uint32_t computed = cdHash(data.data() + 12, data.size() - 12);
+            if (stored != computed || stored != g.second) {
+                char buf[160];
+                std::snprintf(buf, sizeof(buf), "%s/0.pamt hash %08X (computed %08X), pack expects %08X: regenerate the pack",
+                              g.first.c_str(), stored, computed, g.second);
+                why = buf;
+                return nullptr;
+            }
+        }
+        for (const pack::PazInfo& z : srv->reader().paz()) {
+            uint64_t actual = 0;
+            const std::wstring p = joinPath(groupDir(gameRoot, z.group), std::to_wstring(z.pazIndex) + L".paz");
+            if (!fileSize(p, actual) || actual != z.pazSize) {
+                why = z.key() + " size " + std::to_string(actual) + ", pack expects " + std::to_string(z.pazSize);
+                return nullptr;
+            }
+        }
+        return srv;
+    } catch (...) {
+        why = "unexpected exception while loading the pack";
+        return nullptr;
+    }
 }
 
 SetupResult runSetup(const Config& cfg, const std::wstring& scriptsDir) {
