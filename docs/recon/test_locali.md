@@ -161,4 +161,54 @@ blocco input; una riga INFO per ciascuno renderebbe verificabile questa tappa da
 
 ## 5. Probe (A1-b)
 
-Da fare.
+### Primo giro, sola lettura (30/10/2026, 14:11-14:17)
+
+`probes.ini` dell'artifact con `Enabled=1`, `AllowHooks=0` (weather_manager spento). Annotazioni
+di Stefano dall'HUD:
+
+| Ora reale | HUD | Note |
+|---|---|---|
+| 14:12 | 19:13, domenica, giorno 245 | dopo il caricamento |
+| 14:14 | 19:27 | |
+| 14:15 | 19:39 | apre la mappa |
+| 14:16 | 19:42 | chiude la mappa |
+
+Risultati (`probe.log`):
+
+- **Exe e sezioni come previsto**: timestamp 0x6AE387F2; una sola sezione di codice `.impdata` a RVA
+  0x1000; `.00cfg`, `.tls`, `.rdata` marcate OBFUSCATED (mai lette). Indice RTTI: 15.360 classi.
+- **Firme**: tutte e 4 con una sola corrispondenza (`clock_a`, `clock_b`, `cvar_snow_start`,
+  `cvar_snow_full`).
+- **GameTime pubblicato** (`clock_b` a RVA 0x6E9C998, `clock_a` a 0x6E9C9B8, nella sezione dati):
+  - al menu principale vale giorno 1, 12:00; dopo il caricamento giorno 245, 19:13, che
+    **coincide con l'HUD** alle 14:12 (giorno e ora). Il giorno della settimana a `+0x14` vale 0 con
+    "domenica" e 245 % 7 = 0: compatibile con weekday = day % 7, domenica = 0.
+  - `rate` a `+0x16` vale **12**, non 24 come atteso dal piano.
+  - **Non è un orologio vivo**: due letture a circa 105 s di distanza (14:13:50 e 14:15:36) danno
+    entrambe 19:13, mentre l'HUD avanza fino a 19:39. Sembra una fotografia presa al caricamento
+    (o a eventi), non aggiornata a ogni frame. Per `DaySource::GameClock` serve l'oggetto vivo:
+    secondo giro con capture su `GameTime_Publish` / `GameTime_Get`.
+- **Velocità del tempo dall'HUD**: 29 minuti di gioco in circa 4 minuti reali (circa 7 min di gioco
+  al minuto). Con la mappa aperta l'orologio avanza ancora (19:39 -> 19:42 in circa un minuto),
+  forse più lento: annotazioni al minuto, troppo grossolane per dirlo.
+- **Cvar della neve confermate**: SnowStart -5, SnowFull -20 (valore e default, classe
+  `pa::GlobalVariableFloat`, RVA 0x71A8D10 e 0x71A8D60).
+- **Scansione dell'heap inutilizzabile così com'è**: `ServerWeatherManager`,
+  `weatherTimeSimulatorScriptComponent` e `PAClimateTexture` danno 0 oggetti, ogni scansione dura
+  circa 35 s e blocca i campionamenti delle altre probe. Vedi BUGS.md, B4.
+- Classi utili viste: i 6 `scriptComponent` del meteo (Cloud, Effect, Simulator, Surface,
+  Time, worldWeatherEffect, 20 slot ciascuno), `ConditionData_IsCoveredBySnow`,
+  `GimmickEventHandlerData_ClearCoveredSnow`, `SequencerGamePlayEventSetTimeOfDay_ITimelineEventData`,
+  `UITimeOfDayEvent`. Nessuna classe `*Environment*` legata al meteo.
+
+### Indirizzi per `targets.ini` (exe hotfix 30/10, timestamp 0x6AE387F2)
+
+Da inserire in `targets.ini` quando la sessione che scrive `src/win/apply/` ne fissa il formato.
+Le RVA valgono solo per questo exe; le firme sono quelle di `probes.ini`.
+
+| Bersaglio | Come trovarlo | RVA | Stato |
+|---|---|---|---|
+| GameTime pubblicato, copia B | firma `clock_b` | 0x6E9C998 | confermato, ma non vivo |
+| GameTime pubblicato, copia A | firma `clock_a` | 0x6E9C9B8 | confermato, ma non vivo |
+| cvar SnowStart (valore a +0x38) | firma `cvar_snow_start` | 0x71A8D10 | confermato (-5) |
+| cvar SnowFull (valore a +0x38) | firma `cvar_snow_full` | 0x71A8D60 | confermato (-20) |

@@ -48,3 +48,20 @@ estratti).
   nessun pacchetto, cioè vanilla, oppure il pacchetto disponibile più vicino nel ciclo, scritto
   chiaramente nel log) e far rispettare `Active` finché il calendario non cambia stadio o finché
   l'utente non sceglie dal menu.
+
+## B4. La scansione dell'heap dei probe non trova nulla e blocca le altre probe (aperto)
+
+- **Dove**: `src/win/probe/memory.cpp` (`forEachHeapRegion`), `src/win/probe/probe.cpp` (`heapScan`),
+  default `scanMaxMB = 4096` in `src/core/probe/probe_config.h`.
+- **Sintomo**: nel primo giro (30/10) le tre probe `Instance=scan` (`ServerWeatherManager`,
+  `weatherTimeSimulatorScriptComponent`, `PAClimateTexture`) trovano 0 oggetti a ogni passata;
+  ogni passata dura circa 35 s e le tre si alternano senza sosta. Nel frattempo le probe `global`
+  vengono campionate solo tra una scansione e l'altra (2 campioni in 5 minuti invece di uno al
+  secondo).
+- **Causa probabile**: il limite di 4 GB si esaurisce prima di arrivare agli oggetti (il processo
+  ha un heap molto più grande); `PAClimateTexture` esiste di sicuro in memoria. Possibile anche che
+  il confronto sulla vtable (`vtableX`) non corrisponda per questi oggetti.
+- **Correzione proposta**: eseguire le scansioni su un thread separato o a fette (per esempio
+  256 MB per giro) senza bloccare i campionamenti; loggare quanti MB e regioni sono stati
+  esaminati; partire dalle regioni più recenti o più grandi; aggiungere un modo per trovare
+  l'istanza da un puntatore noto (catena da un globale) invece che dall'heap.
