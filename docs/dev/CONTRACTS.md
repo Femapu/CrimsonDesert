@@ -46,4 +46,7 @@ profile, looks, tier, region, asset`. Le texture con lo stesso `asset` (colore, 
 devono usare lo stesso seme: `seed = lookup3(asset, 0xC5EDE)`.
 
 ## Modifiche ai contratti
-(nessuna)
+- `season.h` (motore stagioni, 30/10): nessuna firma cambiata, solo aggiunte (vedi
+  `docs/dev/season_engine.md`). Valori predefiniti cambiati: `realMinutesPerDay` 48 -> 90 (un giorno
+  del gioco dura circa 60-120 minuti reali), finestra del giorno vanilla 03:00-19:00 (prima 6-20).
+  `update()` accetta `inGameHours < 0` (ore derivate dal giorno).
