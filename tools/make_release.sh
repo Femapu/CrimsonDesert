@@ -47,7 +47,7 @@ cp build/QuattroStagioni.asi "$DEST/bin64/scripts/"
 cp dist/bin64/scripts/QuattroStagioni.ini "$DEST/bin64/scripts/"
 for f in dist/bin64/scripts/QuattroStagioni/*; do
   [[ "$(basename "$f")" == manifest.ini ]] && continue
-  cp "$f" "$DEST/bin64/scripts/QuattroStagioni/"
+  cp -r "$f" "$DEST/bin64/scripts/QuattroStagioni/"  # lang/ is a folder
 done
 
 # Windows tools (qs_lz4exact is a developer tool: not shipped)
