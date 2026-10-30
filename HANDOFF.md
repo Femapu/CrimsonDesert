@@ -1,4 +1,4 @@
-# Handoff QuattroStagioni (30 ottobre 2026)
+# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, sessione cloud)
 
 ## Obiettivo
 Mod pubblicabile di stagioni dinamiche per Crimson Desert 2.04 con DLC "Charting the Unknown".
@@ -13,27 +13,55 @@ Requisiti di Stefano (tutti):
 8. Giornate più corte d'inverno, se agganciabile il ciclo giorno/notte.
 9. Particelle: foglie che cadono, fiato visibile al freddo, riusando effetti del gioco.
 
-## Architettura decisa (per la pubblicazione)
-- La mod NON distribuisce texture di Pearl Abyss. Distribuisce: plugin ASI, manifest delle classi di texture, "ricette" (trasformazioni deterministiche per classe) e un GENERATORE in C++ che gira sul PC dell'utente finale, legge i suoi file del gioco e crea il pacchetto stagionale in locale (rigenerabile dopo le patch).
-- Il plugin sostituisce texture intercettando le letture dei `.paz` (hook Win32 su KernelBase) con dati di dimensione IDENTICA (encoder LZ4 a dimensione esatta). Mai modificare o ri-hashare `.pamt`, `.papgt` (ha un trailer da 64 byte non ricreabile), `.pathc`, `.paver`.
-- Cambio stagione in diretta: sostituzione texture lato GPU (hook D3D12), da fare.
-- Sistemi di gioco: hook per firma (byte pattern), mai dentro la sezione Denuvo `.code`; vtable/RTTI in `.text1`.
+Documenti chiave: `docs/DESIGN.md` (visione e architettura), `docs/dev/CONTRACTS.md` (moduli e
+interfacce), `docs/GENERATORE.md` (uso di qs_gen), `docs/dev/season_engine.md`,
+`docs/dev/texture_recipes.md`, `docs/recon/probe_plan.md`, `docs/recon/recon_D_web.md`.
 
-## Stato
-- FATTO: ricognizione (docs/recon/): formati 2.04 (lookup3 seed 0xC5EDE, pamt a trie, ChaCha20, LZ4, DDS per-mip), causa della rottura di Seasons, analisi exe (Denuvo, RTTI, controllo integrità all'avvio).
-- FATTO: Fase 2, plugin base `QuattroStagioni.asi` (src/). Testato in gioco il 30/10: il log mostra "HIT ui/texture/cd_loading_00.dds ... patched", nessun errore. Conferma visiva (logo di caricamento arancione) ancora da vedere.
-- Versioni exe riconosciute (src/win/setup.cpp, kKnownExes): 333779352/1793246886 (lancio 2.04.00) e 336264088/1793296370 (hotfix 30/10). Hash 0012/0.pamt dopo hotfix: 0x96C76FDD (in manifest).
-- Installato sul PC: `bin64\scripts\QuattroStagioni.asi`, `.ini`, cartella `QuattroStagioni\` (manifest, test.bin, THIRD_PARTY) e `bin64\winmm.ini` con `LoadPlugins=1`, `LoadFromScriptsOnly=1` (così NON carica il vecchio `bin64\Seasons.asi`, rotto). Ultimate ASI Loader 9.7.4 come `winmm.dll`.
-- INTERROTTO: tappa A1 (due agenti fermati per limite di utilizzo). `data/partial/` contiene output parziali NON verificati (inventario vegetazione, firme): rifare o verificare.
+## Stato (30/10, fine sessione cloud)
+Tutto compila (`./build.sh test`: 6 binari di test, oltre 72.000 controlli, tutti verdi) e la CI su
+GitHub Actions produce un pacchetto `QuattroStagioni-dist`. NIENTE di quanto segue è ancora stato
+provato sui file veri o nel gioco: è stato provato su dati sintetici, sotto wine e con D3D12 software.
 
-## Prossimi passi (fase A, a tappe con checkpoint di utilizzo)
-- A1-a: inventario vegetazione (base + dlc/dlc_01) per classe e ricette v0 con anteprime; stime disco e tempi del generatore.
-- A1-b: ricognizione dell'exe hotfix per giorno/ora, meteo, mappa clima (`texture/climate_texture_1.dds`), atmosfera/luce, durata giorno, particelle; firme in data/signatures_*.json e piano di "probe" runtime.
-- A2: prototipo menu F5 (ImGui su D3D12, MIT) e cambio texture in diretta su GPU.
-- Poi B (transizioni, varietà, calendario, meteo/neve), C (luce, durata giorno, particelle), D (pacchetto finale, test).
+| Modulo | Cartelle | Stato |
+|---|---|---|
+| Inventario v1 | `data/vegetation_classes_v1.json`, `tools/classify_inventory.py` | 3688 texture bersaglio con profilo stagionale, ~1,6 GB per look. Basato sull'inventario v0 non verificato |
+| Codec texture | `src/core/texture/` | BC1/BC3/BC4/BC5/raw, deterministico (stesso output Linux/Windows), fitBias per rientrare nella dimensione LZ4 |
+| Ricette | `src/core/recipe/`, `data/recipes/vegetation.ini` | 19 profili in OKLab, palette autunnali per seme, caduta foglie, interpolazione tra look |
+| Generatore | `src/core/gen/`, `src/core/pack/`, `src/core/crypto/`, `src/cli/qs_gen.cpp` | lettura archivi (ChaCha20, LZ4, mip), fitter, pacchetti `.qsp`, verifica inventario |
+| Plugin: file | `src/win/io_hooks.*`, `setup.*` | serve migliaia di texture da un pacchetto, verifica a blocchi da 4 KiB, cambio pacchetto a runtime |
+| Motore stagioni | `src/core/season/`, `src/cli/qs_season.cpp` | calendario, 20 stadi, regioni, temperatura, meteo, neve, luce, alba/tramonto, velocità giorno/notte |
+| Tick stagioni | `src/win/season_tick.*` | calendario nel plugin, stato in `QuattroStagioni\state.ini`, pacchetto attivo = stadio della regione temperata |
+| Overlay e menu F5 | `src/win/overlay/`, `third_party/imgui/` | hook DXGI di sistema, menu in 5 schede, HDR, coesistenza ReShade/Streamline; demo `tools/overlay_demo/` |
+| Probe runtime | `src/win/probe/`, `src/core/probe/`, `dist/.../probes.ini` | RTTI, firme, hook di sola cattura, guidati da ini; provati su un finto gioco sotto wine |
+| Anteprime | `src/cli/qs_preview.cpp`, `docs/img/` | contact sheet di look e transizioni da PNG o DDS |
+
+Strumenti Windows (in `build/win/` o nell'artifact della CI): `qs_gen.exe`, `qs_preview.exe`,
+`qs_season.exe`, `qs_lz4exact.exe`.
+
+## Prossimi passi (sessione LOCALE sul PC di Stefano, con i file del gioco)
+1. **Verifica inventario**: `qs_gen.exe --game "<Crimson Desert>" --verify-inventory --report verify.txt`.
+   Controllare anche se il DLC ha vegetazione propria (nell'inventario v0 il DLC ha solo tile di dati
+   del terreno) e se mancano gruppi.
+2. **Anteprime vere**: estrarre qualche texture per profilo (`tools/index_browser.py extract`) e
+   lanciare `qs_preview` con `--fit` per misurare il tasso di riuscita reale e tarare
+   `data/recipes/vegetation.ini`. Le anteprime restano sul PC (mai nel repo).
+3. **Primo pacchetto**: `qs_gen.exe --game ... --stage A --out "<bin64>\scripts\QuattroStagioni\packs"`,
+   poi in gioco con il menu F5 in modalità Manuale su Autunno. Guardare il log (`pack A: ...`).
+   Tenere d'occhio i rallentamenti dello streaming (`WaitForTargetReads=1`).
+4. **Menu in gioco**: prima con frame generation spenta. Verificare F5, input bloccato, salvataggio.
+5. **Probe (A1-b)**: `probes.ini` con `Enabled=1`, `AllowHooks=0`, seguire `docs/recon/probe_plan.md`:
+   orologio, velocità giorno/notte, meteo, neve, luce. Scrivere `tools/sigscan.py` (non consegnato:
+   la scrittura è stata interrotta da un controllo automatico) o verificare le firme con i probe.
+6. **Poi**: hook di meteo/neve/luce/durata del giorno con i valori di `SeasonState`; temperatura sulla
+   `climate_texture_1.dds` per stagione; sostituzione GPU delle texture già caricate quando cambia lo
+   stadio (oggi il cambio vale solo per le texture caricate dopo); pacchetti per giorno con la
+   varietà per albero e le regioni (oggi un pacchetto = uno stadio globale); particelle.
 
 ## Note pratiche
-- Build: `./build.sh test` su Linux con mingw-w64 (crea build/QuattroStagioni.asi). I test che usano `tests/data` richiedono file del gioco non inclusi nel repo: rigenerarli dal PC.
-- La texture di test (`test.bin`) è derivata da un asset del gioco: non è nel repo; si ricostruisce con `tools/build_replacement.py` partendo dall'entry originale letta dal PC.
-- Accesso al PC di Stefano (cartella del gioco `C:\Program Files (x86)\Steam\steamapps\common\Crimson Desert`) solo se la sessione è collegata al suo computer. Attenzione: la consegna file sul PC ha restituito una volta copie in cache; inviare con un nome di origine nuovo e verificare lo sha256 sul PC dopo ogni installazione.
-- Due patch in due giorni: dopo ogni aggiornamento ricontrollare dimensione/timestamp dell'exe e gli hash dei pamt usati.
+- Build: `./build.sh test` su Linux (g++, mingw-w64; wine per i test Windows facoltativi). Circa 3 minuti.
+- Il repo è PUBBLICO: mai file del gioco o derivati (texture estratte, anteprime da texture vere).
+- Installazione: contenuto di `dist/bin64/` in `bin64\` più `QuattroStagioni.asi` in `bin64\scripts\`.
+  `winmm.ini` con `LoadFromScriptsOnly=1` evita di caricare il vecchio `Seasons.asi`.
+- Versioni exe riconosciute (src/win/setup.cpp, kKnownExes): 333779352/1793246886 (2.04.00) e
+  336264088/1793296370 (hotfix 30/10). Dopo ogni patch ricontrollare exe e hash dei pamt.
+- La consegna file sul PC ha restituito una volta copie in cache: verificare lo sha256 dopo l'installazione.
