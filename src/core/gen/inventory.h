@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../pamt.h"
+#include "../season/season.h"
 
 namespace qs::gen {
 
@@ -33,6 +34,12 @@ struct Inventory {
 // Loads the classes file. Items with missing mandatory fields are reported in `errors` and skipped.
 bool loadInventory(const std::string& utf8Path, Inventory& out, std::vector<std::string>& errors);
 bool parseInventory(const std::string& jsonText, Inventory& out, std::vector<std::string>& errors);
+
+// Region whose calendar the texture follows (stored in pack v2 records). "shared_temperate",
+// "north_cold", "swamp_jungle", "aquatic" map to their season::Region. "by_tile" (terrain tiles whose
+// region depends on where the tile lies) and "world" (global maps) are Temperate for now.
+// TODO: terrain tile -> region map (from the tile coordinates in the path) once the world layout is known.
+season::Region regionOf(const Item& it);
 
 // Compares an item with the live index record. Returns an empty string when they match.
 std::string compareWithIndex(const Item& it, const PamtEntry& e);

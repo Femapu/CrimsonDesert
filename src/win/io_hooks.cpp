@@ -13,22 +13,28 @@
 // offsets and the files on disk are never changed. Every hook calls the original function first or
 // unconditionally, preserves GetLastError(), and falls back to pure pass-through on any problem.
 //
-// Season packs: the active pack (a shared_ptr swapped under g_packLock) is consulted for every
-// completed read of a tracked .paz. Records are found by binary search per paz (core/pack/serve.h);
-// original bytes are verified per 4 KiB chunk against hashes stored in the pack, and the edges of
-// unaligned reads are completed from a private, unhooked handle on the same paz. Payloads come from
-// the pack file on demand through a bounded cache. A read in flight during a pack switch is served by
-// the pack active when it completes.
+// Season packs: several packs (one per visual stage) are open at once; an immutable per-texture
+// snapshot (core/pack/multi.h, published through an atomic shared_ptr slot) says which pack serves
+// each texture. Every completed read of a tracked .paz takes a copy of the snapshot pointer (never a
+// long lock), finds the overlapping textures by binary search and applies the record of the serving
+// pack; original bytes are verified per 4 KiB chunk against hashes stored in the pack, and the edges
+// of unaligned reads are completed from a private, unhooked handle on the same paz. Payloads come
+// from the pack files on demand through bounded caches. The season tick (setSeasonDay) opens and
+// closes packs and republishes the snapshot when the day crosses a texture's stage boundary; a read in
+// flight during a swap is served by the snapshot current when it completes.
 #include "io_hooks.h"
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
 #include <memory>
 #include <unordered_map>
 
+#include "../core/pack/multi.h"
 #include "MinHook.h"
 #include "log.h"
 #include "winutil.h"
@@ -81,7 +87,7 @@ struct Archive {
     volatile LONG64 patched = 0, already = 0, mismatch = 0, mappings = 0, scatter = 0;
     volatile LONG mappingLogged = 0, scatterLogged = 0;
     // season pack
-    volatile LONG64 slotCache = -1;   // (pack generation << 32) | (slot + 1), -1 = unresolved
+    volatile LONG64 slotCache = -1;   // (texture index id << 32) | (slot + 1), -1 = unresolved
     volatile LONG64 packReads = 0, packPatched = 0, packAlready = 0, packRefused = 0;
     HANDLE priv = INVALID_HANDLE_VALUE;  // private handle for original-chunk reads (opened lazily)
     SRWLOCK privLock = SRWLOCK_INIT;
@@ -112,12 +118,10 @@ volatile LONG g_pendingCount = 0;
 
 SRWLOCK g_patchLock = SRWLOCK_INIT;  // serialises buffer patching (phase-2 manifest entries)
 
-// Season pack state
-SRWLOCK g_packLock = SRWLOCK_INIT;  // protects g_pack, g_packGen, g_packStage
-std::shared_ptr<pack::PackServer> g_pack;
-LONG g_packGen = 1;
-std::string g_packStage;
-SRWLOCK g_packLoadLock = SRWLOCK_INIT;  // serialises setActivePack callers
+// Season pack state. Hooks only read g_serve. Everything in g_drv belongs to the pack driver
+// (setSeasonDay / setActivePack / packsStop), serialised by g_packLoadLock, which hooks never take.
+pack::SnapshotSlot g_serve;
+SRWLOCK g_packLoadLock = SRWLOCK_INIT;
 std::wstring g_packsDir, g_packRoot;
 size_t g_packCacheBytes = size_t(64) << 20;
 volatile LONG g_packsStarted = 0;
@@ -218,31 +222,22 @@ void registerPaz(HANDLE h, const char* api, DWORD flags) {
                 (flags & FILE_FLAG_OVERLAPPED) ? " [overlapped]" : "", (flags & FILE_FLAG_NO_BUFFERING) ? " [no-buffering]" : "");
 }
 
-// Snapshot of the active pack (shared_ptr copy: stays valid even if a switch happens meanwhile).
-std::shared_ptr<pack::PackServer> currentPack(LONG& gen) {
-    AcquireSRWLockShared(&g_packLock);
-    std::shared_ptr<pack::PackServer> p = g_pack;
-    gen = g_packGen;
-    ReleaseSRWLockShared(&g_packLock);
-    return p;
-}
-
-// Slot of this archive in pack `p` (generation `gen`), cached per archive; -1 if the pack has none.
-int packSlot(Archive* a, const pack::PackServer* p, LONG gen) {
-    if (!p) return -1;
+// Slot of this archive in the snapshot's texture index, cached per archive; -1 if no open pack has it.
+int packSlot(Archive* a, const pack::ServeSnapshot* s) {
+    if (!s || !s->index) return -1;
+    const LONG64 id = LONG64(s->index->id());
     LONG64 c = a->slotCache;
-    if (c != -1 && LONG(c >> 32) == gen) return int(c & 0xFFFFFFFF) - 1;
-    int slot = p->slotFor(a->key);
-    InterlockedExchange64(&a->slotCache, (LONG64(gen) << 32) | LONG64(uint32_t(slot + 1)));
+    if (c != -1 && (c >> 32) == id) return int(c & 0xFFFFFFFF) - 1;
+    int slot = s->slotFor(a->key);
+    InterlockedExchange64(&a->slotCache, (id << 32) | LONG64(uint32_t(slot + 1)));
     return slot;
 }
 
 bool packTouches(Archive* a, uint64_t off, uint64_t len) {
     if (!g_packsStarted) return false;
-    LONG gen;
-    std::shared_ptr<pack::PackServer> p = currentPack(gen);
-    int slot = packSlot(a, p.get(), gen);
-    return slot >= 0 && p->touches(slot, off, len);
+    std::shared_ptr<const pack::ServeSnapshot> s = g_serve.get();
+    int slot = packSlot(a, s.get());
+    return slot >= 0 && s->touches(slot, off, len);
 }
 
 bool touchesTarget(Archive* a, uint64_t off, uint64_t len) {
@@ -331,9 +326,8 @@ void patchCompleted(Archive* a, uint64_t off, uint8_t* buf, size_t got, const ch
 
     // ---- season pack ----
     if (!g_packsStarted) return;
-    LONG gen;
-    std::shared_ptr<pack::PackServer> p = currentPack(gen);
-    int slot = packSlot(a, p.get(), gen);
+    std::shared_ptr<const pack::ServeSnapshot> p = g_serve.get();
+    int slot = packSlot(a, p.get());
     if (slot < 0 || !p->touches(slot, off, got)) return;
     InterlockedIncrement64(&a->packReads);
     if (!g_cfg.substitute) {
@@ -807,21 +801,30 @@ void logSummary(const char* reason) {
             (long long)c_scatter, (long long)c_mapping, (long long)c_gor, (long long)c_gorEx, (long long)c_gqcs,
             (long long)c_gqcsEx, (long long)c_waits);
     {
-        LONG gen;
-        std::shared_ptr<pack::PackServer> p = currentPack(gen);
-        if (p) {
-            pack::ServeStats s = p->stats();
-            QS_INFO("pack %s: reads served %llu, records hit %llu, patched %llu, already %llu, LEFT UNTOUCHED: mismatch %llu "
-                    "unverifiable %llu payload errors %llu (disabled records %llu); edge chunks read from disk %llu; "
-                    "%.1f MB patched; cache %llu hits / %llu misses, %.1f MB in use",
-                    g_packStage.c_str(), (unsigned long long)s.applyCalls, (unsigned long long)s.recordHits,
-                    (unsigned long long)s.patched, (unsigned long long)s.already, (unsigned long long)s.mismatch,
-                    (unsigned long long)s.unverifiable, (unsigned long long)s.payloadErrors,
-                    (unsigned long long)s.disabledRecords, (unsigned long long)s.partialChunks,
-                    double(s.bytesPatched) / 1048576.0, (unsigned long long)s.cacheHits, (unsigned long long)s.cacheMisses,
-                    double(s.cacheBytes) / 1048576.0);
+        std::shared_ptr<const pack::ServeSnapshot> snap = g_serve.get();
+        if (snap && snap->index && !snap->index->packs().empty()) {
+            const auto& packs = snap->index->packs();
+            QS_INFO("packs (%s): %zu open, %zu textures indexed, %zu served (%zu by a fallback stage), %zu whose stage "
+                    "has no pack%s%s", snap->forced ? ("override " + snap->forcedStage).c_str() : "per texture",
+                    packs.size(), snap->index->textures().size(), snap->servedTextures, snap->fallbackTextures,
+                    snap->missingTextures, snap->missingStages.empty() ? "" : "; missing stages: ",
+                    [&] { std::string m; for (const auto& id : snap->missingStages) m += (m.empty() ? "" : " ") + id; return m; }().c_str());
+            for (size_t i = 0; i < packs.size(); ++i) {
+                const pack::LoadedPack& lp = *packs[i];
+                pack::ServeStats s = lp.server->stats();
+                QS_INFO("pack %s: serves %u textures (%u as fallback); patched %llu (fallback %llu), already %llu, LEFT "
+                        "UNTOUCHED: mismatch %llu unverifiable %llu payload errors %llu (disabled records %llu); edge "
+                        "chunks read from disk %llu; %.1f MB patched; cache %llu hits / %llu misses, %.1f MB in use",
+                        lp.stageId.c_str(), i < snap->packAssigned.size() ? snap->packAssigned[i] : 0,
+                        i < snap->packFallback.size() ? snap->packFallback[i] : 0, (unsigned long long)lp.patched.load(),
+                        (unsigned long long)lp.fallbackPatched.load(), (unsigned long long)lp.already.load(),
+                        (unsigned long long)s.mismatch, (unsigned long long)s.unverifiable,
+                        (unsigned long long)s.payloadErrors, (unsigned long long)s.disabledRecords,
+                        (unsigned long long)s.partialChunks, double(s.bytesPatched) / 1048576.0,
+                        (unsigned long long)s.cacheHits, (unsigned long long)s.cacheMisses, double(s.cacheBytes) / 1048576.0);
+            }
         } else if (g_packsStarted) {
-            QS_INFO("pack: none active");
+            QS_INFO("pack: none open");
         }
     }
     for (Archive* a : list) {
@@ -846,7 +849,227 @@ void uninstall() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Season packs
+// Season packs: the driver (setSeasonDay / setActivePack). Runs in the tick or menu thread, under
+// g_packLoadLock; publishes immutable snapshots through g_serve for the hooks.
+namespace {
+
+const double kLookaheadDays = 0.25;           // packs are opened this much game time before they are needed
+const ULONGLONG kRescanMs = 30000;            // folder listing refresh
+const ULONGLONG kRetryMs = 300000;            // retry a refused pack file after 5 minutes
+const ULONGLONG kPlanMs = 60000;              // refresh of the menu plan
+const int kDefaultPlanDays = 7;
+
+struct Driver {
+    std::map<std::string, std::shared_ptr<pack::LoadedPack>> open;  // season mode: stage id -> pack
+    std::shared_ptr<const pack::TextureIndex> index;                // index of `open`
+    std::shared_ptr<const pack::ServeSnapshot> snap;                // last season snapshot published
+    std::map<std::string, std::string> refused;                     // stage id -> reason
+    std::map<std::string, ULONGLONG> refusedAt;
+    bool forced = false;
+    std::string forcedStage;
+    std::shared_ptr<pack::LoadedPack> forcedPack;
+    bool haveDay = false;
+    double day = 0;
+    season::SeasonConfig cfg;
+    std::string cfgKey;
+    std::vector<std::string> present;                               // stage ids with a file in the folder
+    std::map<std::string, uint64_t> presentBytes;                   // file sizes
+    ULONGLONG presentAt = 0;
+    uint32_t regionsSeen = 0;                                       // regions of every texture seen so far
+    pack::StagePlan plan;
+    ULONGLONG planAt = 0;
+    uint64_t swaps = 0;
+    std::string lastError;
+};
+Driver g_drv;
+
+// What packsStatus() copies (published by the driver, read by the menu).
+SRWLOCK g_statusLock = SRWLOCK_INIT;
+PacksStatus g_status;
+
+void rescanFolder(Driver& d) {
+    d.present.clear();
+    d.presentBytes.clear();
+    d.presentAt = GetTickCount64();
+    if (g_packsDir.empty()) return;
+    WIN32_FIND_DATAW fd;
+    HANDLE f = FindFirstFileW(joinPath(g_packsDir, L"*.qsp").c_str(), &fd);
+    if (f == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        const std::string id = pack::stageIdFromFileName(narrow(fd.cFileName));
+        if (id.empty()) continue;
+        d.present.push_back(id);
+        d.presentBytes[id] = (uint64_t(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+    } while (FindNextFileW(f, &fd));
+    FindClose(f);
+}
+
+// Present stage files that are not in their refusal back-off.
+std::vector<std::string> usablePresent(Driver& d) {
+    std::vector<std::string> v;
+    const ULONGLONG now = GetTickCount64();
+    for (const std::string& id : d.present) {
+        auto it = d.refusedAt.find(id);
+        if (it != d.refusedAt.end() && now - it->second < kRetryMs) continue;
+        v.push_back(id);
+    }
+    return v;
+}
+
+// Opens and verifies one pack. Returns nullptr (and remembers why) on failure.
+std::shared_ptr<pack::LoadedPack> openPack(Driver& d, const std::string& stageOrFile, std::string& why) {
+    const std::wstring path = resolvePackPath(g_packsDir, stageOrFile);
+    LARGE_INTEGER t0;
+    QueryPerformanceCounter(&t0);
+    std::shared_ptr<pack::PackServer> srv = loadVerifiedPack(g_packRoot, path, g_packCacheBytes, why);
+    if (!srv) {
+        QS_ERR("packs: %s refused: %s", narrow(path).c_str(), why.c_str());
+        d.lastError = narrow(path) + ": " + why;
+        return nullptr;
+    }
+    const pack::PackReader& r = srv->reader();
+    std::shared_ptr<pack::LoadedPack> lp(new pack::LoadedPack());
+    lp->stageId = r.header().stageId;
+    lp->server = srv;
+    const size_t slash = path.find_last_of(L"\\/");
+    lp->file = narrow(slash == std::wstring::npos ? path : path.substr(slash + 1));
+    QS_INFO("packs: %s verified in %.1f ms: stage %s, format v%u, %zu textures in %zu archives, %.1f MB payload, "
+            "index %.2f MB, generator \"%s\"", narrow(path).c_str(), msSince(t0), lp->stageId.c_str(),
+            r.header().formatVersion, r.records().size(), r.paz().size(), double(r.payloadSize()) / 1048576.0,
+            double(r.indexBytes()) / 1048576.0, r.header().generator.c_str());
+    for (const pack::Record& rec : r.records()) d.regionsSeen |= 1u << (rec.hasMeta ? rec.region : 0);
+    return lp;
+}
+
+void splitCache(const std::vector<std::shared_ptr<pack::LoadedPack>>& packs) {
+    if (packs.empty()) return;
+    const size_t each = std::max<size_t>(g_packCacheBytes / packs.size(), size_t(4) << 20);
+    for (const auto& p : packs) p->server->setCacheLimit(each);
+}
+
+std::string joinIds(const std::vector<std::string>& v) {
+    std::string s;
+    for (const auto& x : v) s += (s.empty() ? "" : " ") + x;
+    return s.empty() ? "-" : s;
+}
+
+void refreshPlan(Driver& d, int days) {
+    if (!d.haveDay) return;
+    uint64_t avg = 0;
+    for (const auto& kv : d.presentBytes) avg += kv.second;
+    if (!d.presentBytes.empty()) avg /= d.presentBytes.size();
+    const uint32_t mask = d.regionsSeen ? (d.regionsSeen & pack::enabledRegionMask(d.cfg)) : pack::enabledRegionMask(d.cfg);
+    d.plan = pack::planStages(d.cfg, d.day, double(days), mask, d.present, [&](const std::string& id) -> uint64_t {
+        auto it = d.presentBytes.find(id);
+        return it != d.presentBytes.end() ? it->second : avg;
+    });
+    d.planAt = GetTickCount64();
+}
+
+// Copies the driver state into g_status (counters are added live by packsStatus()).
+void publishStatus(Driver& d) {
+    PacksStatus st;
+    st.started = g_packsStarted != 0;
+    st.forced = d.forced;
+    st.forcedStage = d.forcedStage;
+    st.seasonDriven = !d.forced && d.haveDay;
+    st.day = d.day;
+    st.available = d.present;
+    for (const auto& kv : d.refused) st.refused.push_back(kv.first + ": " + kv.second);
+    st.planDays = kDefaultPlanDays;
+    st.plan = d.plan;
+    st.cacheLimitBytes = g_packCacheBytes;
+    st.snapshotSwaps = d.swaps;
+    st.lastError = d.lastError;
+    AcquireSRWLockExclusive(&g_statusLock);
+    g_status = std::move(st);
+    ReleaseSRWLockExclusive(&g_statusLock);
+}
+
+void publish(Driver& d, std::shared_ptr<const pack::ServeSnapshot> s) {
+    g_serve.set(std::move(s));
+    d.swaps++;
+}
+
+// Season mode update (lock held). `force`: recompute even if nothing seems to have changed.
+void seasonUpdate(Driver& d, bool force) {
+    const ULONGLONG now = GetTickCount64();
+    if (d.presentAt == 0 || now - d.presentAt > kRescanMs) rescanFolder(d);
+    const std::vector<std::string> usable = usablePresent(d);
+    const uint32_t mask = d.regionsSeen ? (d.regionsSeen & pack::enabledRegionMask(d.cfg)) : pack::enabledRegionMask(d.cfg);
+    const pack::StagePlan soon = pack::planStages(d.cfg, d.day, kLookaheadDays, mask, usable);
+    const std::vector<std::string> wanted = pack::packsToOpen(d.cfg, soon, usable);
+    std::vector<std::string> openIds;
+    for (const auto& kv : d.open) openIds.push_back(kv.first);
+    std::vector<std::string> wantedSorted = wanted;
+    std::sort(wantedSorted.begin(), wantedSorted.end());
+    bool indexChanged = false;
+    if (wantedSorted != openIds || !d.index) {
+        std::map<std::string, std::shared_ptr<pack::LoadedPack>> next;
+        std::vector<std::string> opened, closed;
+        for (const std::string& id : wanted) {
+            auto it = d.open.find(id);
+            if (it != d.open.end()) { next[id] = it->second; continue; }
+            std::string why;
+            std::shared_ptr<pack::LoadedPack> lp = openPack(d, id, why);
+            if (lp && lp->stageId != id) {
+                why = "the file is named for stage " + id + " but contains stage " + lp->stageId;
+                QS_ERR("packs: %s", why.c_str());
+                lp.reset();
+            }
+            if (!lp) {
+                d.refused[id] = why;
+                d.refusedAt[id] = GetTickCount64();
+                continue;
+            }
+            d.refused.erase(id);
+            d.refusedAt.erase(id);
+            next[id] = lp;
+            opened.push_back(id);
+        }
+        for (const auto& kv : d.open)
+            if (!next.count(kv.first)) closed.push_back(kv.first);
+        d.open = std::move(next);
+        std::vector<std::shared_ptr<pack::LoadedPack>> packs;
+        for (const std::string& id : wanted)
+            if (d.open.count(id)) packs.push_back(d.open[id]);
+        d.index = pack::TextureIndex::build(packs);
+        splitCache(packs);
+        indexChanged = true;
+        std::vector<std::string> openNow;
+        for (const auto& p : packs) openNow.push_back(p->stageId);
+        QS_INFO("packs: day %.2f (%s): open [%s] (opened [%s], closed [%s]), %zu textures indexed%s",
+                d.day, d.cfg.dayToLabel(d.day).c_str(), joinIds(openNow).c_str(), joinIds(opened).c_str(),
+                joinIds(closed).c_str(), d.index->textures().size(),
+                d.index->conflicts() ? (", " + std::to_string(d.index->conflicts()) + " conflicting records ignored").c_str() : "");
+        refreshPlan(d, kDefaultPlanDays);
+    }
+    // A config change resets d.snap before this call (setSeasonDay), so it also lands here.
+    if (force || indexChanged || !d.snap || d.day >= d.snap->validUntil || d.day < d.snap->day) {
+        const pack::ServeSnapshot* prev = (indexChanged || force || !d.snap) ? nullptr : d.snap.get();
+        std::vector<std::string> oldMissing = d.snap ? d.snap->missingStages : std::vector<std::string>();
+        d.snap = pack::assignStages(d.index, d.cfg, d.day, prev);
+        publish(d, d.snap);
+        if (indexChanged || d.snap->missingStages != oldMissing)
+            QS_INFO("packs: %zu textures served (%zu by a fallback stage), %zu whose stage has no pack; missing stages "
+                    "[%s]", d.snap->servedTextures, d.snap->fallbackTextures, d.snap->missingTextures,
+                    joinIds(d.snap->missingStages).c_str());
+        else
+            QS_DBG("packs: day %.4f, %zu textures re-evaluated, next change at day %.4f", d.day,
+                   d.snap->updatedTextures, d.snap->validUntil);
+    }
+    if (now - d.planAt > kPlanMs) refreshPlan(d, kDefaultPlanDays);
+}
+
+void closeSeasonPacks(Driver& d) {
+    d.open.clear();
+    d.index.reset();
+    d.snap.reset();
+}
+
+}  // namespace
+
 bool packsStart(const Config& cfg, const std::wstring& gameRoot, const std::wstring& scriptsDir) {
     if (!g_installed) {
         QS_ERR("packs: hooks are not installed, season packs disabled");
@@ -865,9 +1088,37 @@ bool packsStart(const Config& cfg, const std::wstring& gameRoot, const std::wstr
         if (!setActivePack(cfg.activePack, &why))
             QS_ERR("packs: initial pack %s not activated: %s", cfg.activePack.c_str(), why.c_str());
     } else {
-        QS_INFO("packs: no active pack configured ([Packs] Active=)");
+        QS_INFO("packs: automatic per-texture stages (no [Packs] Active= override)");
+        AcquireSRWLockExclusive(&g_packLoadLock);
+        rescanFolder(g_drv);
+        publishStatus(g_drv);
+        ReleaseSRWLockExclusive(&g_packLoadLock);
     }
     return true;
+}
+
+void setSeasonDay(double day, const season::SeasonConfig& cfg) {
+    if (!g_packsStarted || !std::isfinite(day)) return;
+    AcquireSRWLockExclusive(&g_packLoadLock);
+    try {
+        Driver& d = g_drv;
+        const std::string key = pack::stageConfigKey(cfg);
+        const bool cfgChanged = key != d.cfgKey;
+        d.cfg = cfg;
+        d.cfgKey = key;
+        d.day = day;
+        const bool first = !d.haveDay;
+        d.haveDay = true;
+        if (!d.forced) {
+            if (cfgChanged) d.snap.reset();  // full re-evaluation with the new calendar
+            seasonUpdate(d, first || cfgChanged);
+            if (cfgChanged) refreshPlan(d, kDefaultPlanDays);
+        }
+        publishStatus(d);
+    } catch (...) {
+        QS_ERR("packs: unexpected exception in setSeasonDay");
+    }
+    ReleaseSRWLockExclusive(&g_packLoadLock);
 }
 
 bool setActivePack(const std::string& stageOrFile, std::string* whyOut) {
@@ -877,40 +1128,52 @@ bool setActivePack(const std::string& stageOrFile, std::string* whyOut) {
         if (whyOut) *whyOut = "packs not started";
         return false;
     }
-    const bool none = stageOrFile.empty() || stageOrFile == "none";
+    std::string lower;
+    for (char c : stageOrFile) lower += char(tolower(static_cast<unsigned char>(c)));
+    const bool none = lower.empty() || lower == "none";
+    const bool vanilla = lower == "u" || lower == "vanilla";
     AcquireSRWLockExclusive(&g_packLoadLock);
     try {
-        std::shared_ptr<pack::PackServer> next;
-        std::string stage;
-        if (!none) {
-            const std::wstring path = resolvePackPath(g_packsDir, stageOrFile);
-            LARGE_INTEGER t0;
-            QueryPerformanceCounter(&t0);
-            next = loadVerifiedPack(g_packRoot, path, g_packCacheBytes, why);
-            if (next) {
-                const pack::PackReader& r = next->reader();
-                stage = r.header().stageId;
-                QS_INFO("packs: %s verified in %.1f ms: stage %s, %zu textures in %zu archives, %.1f MB payload, "
-                        "index %.2f MB, generator \"%s\"", narrow(path).c_str(), msSince(t0), stage.c_str(),
-                        r.records().size(), r.paz().size(), double(r.payloadSize()) / 1048576.0,
-                        double(r.indexBytes()) / 1048576.0, r.header().generator.c_str());
+        Driver& d = g_drv;
+        rescanFolder(d);  // a user action: pick up packs generated meanwhile
+        if (none) {
+            d.forced = false;
+            d.forcedStage.clear();
+            d.forcedPack.reset();
+            if (d.haveDay) {
+                seasonUpdate(d, true);
+                QS_INFO("packs: override ended, back to per-texture stages");
             } else {
-                QS_ERR("packs: %s refused: %s (the previous pack stays active)", narrow(path).c_str(), why.c_str());
+                publish(d, nullptr);
+                QS_INFO("packs: override ended, no season day yet: vanilla textures");
+            }
+            ok = true;
+        } else if (vanilla) {
+            d.forced = true;
+            d.forcedStage.clear();
+            d.forcedPack.reset();
+            closeSeasonPacks(d);
+            publish(d, nullptr);
+            QS_INFO("packs: override: vanilla textures");
+            ok = true;
+        } else {
+            std::shared_ptr<pack::LoadedPack> lp = openPack(d, stageOrFile, why);
+            if (lp) {
+                d.forced = true;
+                d.forcedStage = lp->stageId;
+                d.forcedPack = lp;
+                closeSeasonPacks(d);
+                lp->server->setCacheLimit(g_packCacheBytes);
+                std::shared_ptr<const pack::TextureIndex> idx = pack::TextureIndex::build({lp});
+                publish(d, pack::assignForced(idx, lp->stageId));
+                InterlockedExchange(&g_packHitLog, 0);
+                QS_INFO("packs: override: stage %s for every texture (subsequent reads)", lp->stageId.c_str());
+                ok = true;
+            } else {
+                QS_ERR("packs: override %s not applied (the previous state stays)", stageOrFile.c_str());
             }
         }
-        if (next || none) {
-            std::shared_ptr<pack::PackServer> old;
-            AcquireSRWLockExclusive(&g_packLock);
-            old = g_pack;
-            g_pack = next;
-            g_packStage = stage;
-            ++g_packGen;
-            ReleaseSRWLockExclusive(&g_packLock);
-            InterlockedExchange(&g_packHitLog, 0);
-            QS_INFO("packs: active pack is now %s (subsequent reads)", stage.empty() ? "none" : stage.c_str());
-            ok = true;
-            // `old` is freed here, or by the last hook still holding a snapshot of it.
-        }
+        publishStatus(d);
     } catch (...) {
         why = "unexpected exception";
     }
@@ -920,10 +1183,71 @@ bool setActivePack(const std::string& stageOrFile, std::string* whyOut) {
 }
 
 std::string activePackStage() {
-    AcquireSRWLockShared(&g_packLock);
-    std::string s = g_packStage;
-    ReleaseSRWLockShared(&g_packLock);
+    AcquireSRWLockShared(&g_statusLock);
+    std::string s = g_status.forced ? g_status.forcedStage : std::string();
+    ReleaseSRWLockShared(&g_statusLock);
     return s;
+}
+
+std::vector<std::string> openPackStages() {
+    std::vector<std::string> v;
+    std::shared_ptr<const pack::ServeSnapshot> s = g_serve.get();
+    if (s && s->index)
+        for (const auto& p : s->index->packs()) v.push_back(p->stageId);
+    return v;
+}
+
+PacksStatus packsStatus() {
+    PacksStatus st;
+    AcquireSRWLockShared(&g_statusLock);
+    st = g_status;
+    ReleaseSRWLockShared(&g_statusLock);
+    st.started = g_packsStarted != 0;
+    std::shared_ptr<const pack::ServeSnapshot> s = g_serve.get();
+    if (!s || !s->index) return st;
+    const auto& packs = s->index->packs();
+    st.texturesIndexed = uint32_t(s->index->textures().size());
+    st.texturesServed = uint32_t(s->servedTextures);
+    st.texturesFallback = uint32_t(s->fallbackTextures);
+    st.texturesMissing = uint32_t(s->missingTextures);
+    st.missingNow = s->missingStages;
+    st.indexBytes = s->index->bytes();
+    for (size_t i = 0; i < packs.size(); ++i) {
+        const pack::LoadedPack& lp = *packs[i];
+        const pack::PackReader& r = lp.server->reader();
+        PackStatus p;
+        p.stageId = lp.stageId;
+        p.file = lp.file;
+        p.formatVersion = r.header().formatVersion;
+        p.textures = uint32_t(r.records().size());
+        p.assigned = i < s->packAssigned.size() ? s->packAssigned[i] : 0;
+        p.assignedFallback = i < s->packFallback.size() ? s->packFallback[i] : 0;
+        p.patched = lp.patched.load();
+        p.fallbackPatched = lp.fallbackPatched.load();
+        p.already = lp.already.load();
+        p.mismatch = lp.mismatch.load();
+        p.refused = lp.refused.load();
+        p.payloadBytes = r.payloadSize();
+        p.cacheBytes = lp.server->stats().cacheBytes;
+        st.cacheBytes += p.cacheBytes;
+        st.open.push_back(std::move(p));
+    }
+    return st;
+}
+
+pack::StagePlan planStages(int days) {
+    pack::StagePlan p;
+    if (days < 0) days = 0;
+    AcquireSRWLockExclusive(&g_packLoadLock);
+    try {
+        if (g_drv.presentAt == 0) rescanFolder(g_drv);
+        refreshPlan(g_drv, days);
+        p = g_drv.plan;
+        refreshPlan(g_drv, kDefaultPlanDays);  // keep the status window as it was
+    } catch (...) {
+    }
+    ReleaseSRWLockExclusive(&g_packLoadLock);
+    return p;
 }
 
 std::vector<std::string> availablePacks() {
@@ -941,11 +1265,13 @@ std::vector<std::string> availablePacks() {
 
 void packsStop() {
     if (!InterlockedExchange(&g_packsStarted, 0)) return;
-    AcquireSRWLockExclusive(&g_packLock);
-    g_pack.reset();
-    g_packStage.clear();
-    ++g_packGen;
-    ReleaseSRWLockExclusive(&g_packLock);
+    AcquireSRWLockExclusive(&g_packLoadLock);
+    g_drv.forcedPack.reset();
+    g_drv.forced = false;
+    closeSeasonPacks(g_drv);
+    g_serve.set(nullptr);
+    publishStatus(g_drv);
+    ReleaseSRWLockExclusive(&g_packLoadLock);
     AcquireSRWLockShared(&g_hLock);
     for (auto& kv : g_archives) {
         Archive* a = kv.second;

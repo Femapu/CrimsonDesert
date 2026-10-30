@@ -67,6 +67,11 @@ bool loadInventory(const std::string& path, Inventory& out, std::vector<std::str
     return parseInventory(std::string(raw.begin(), raw.end()), out, errors);
 }
 
+season::Region regionOf(const Item& it) {
+    if (it.region == "by_tile" || it.region == "world" || it.region.empty()) return season::Region::Temperate;
+    return season::regionFromHint(it.region);
+}
+
 std::string compareWithIndex(const Item& it, const PamtEntry& e) {
     std::string d;
     auto diff = [&](const char* what, uint64_t inv, uint64_t live) {

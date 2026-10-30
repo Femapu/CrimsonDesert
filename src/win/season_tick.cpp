@@ -142,24 +142,32 @@ void tickLoop() {
             engine.update(day, -1.0f);
             const season::SeasonState& st = engine.state();
             std::string stage = st.stage[int(season::Region::Temperate)].id();
+            // Per-texture packs: cheap when nothing changes, opens/closes packs when needed.
+            if (g_packs) io::setSeasonDay(day, cfg);
+            std::string packsText;
+            if (g_packs) {
+                const io::PacksStatus ps = io::packsStatus();
+                if (ps.forced) {
+                    packsText = "  |  pacchetto fisso " + (ps.forcedStage.empty() ? std::string("vanilla") : ps.forcedStage);
+                } else {
+                    std::string ids;
+                    for (const auto& p : ps.open) ids += (ids.empty() ? "" : " ") + p.stageId;
+                    packsText = "  |  pacchetti " + (ids.empty() ? std::string("nessuno") : ids);
+                    if (!ps.missingNow.empty()) packsText += " (" + std::to_string(ps.missingNow.size()) + " mancanti)";
+                }
+            }
             {
                 std::lock_guard<std::mutex> lk(shared().mutex);
                 shared().season = st;
-                shared().statusLine = cfg.dayToLabel(day) + "  |  stadio " + stage +
-                                      (g_packs ? "  |  pacchetto " + io::activePackStage() : "");
+                shared().statusLine = cfg.dayToLabel(day) + "  |  stadio " + stage + packsText;
             }
             {
                 std::lock_guard<std::mutex> lk(g_saveMutex);
                 g_day = day;
             }
             if (stage != lastStage) {
-                QS_INFO("season: %s, stage %s", cfg.dayToLabel(day).c_str(), stage.c_str());
-                if (g_packs) {
-                    std::string why;
-                    bool vanilla = stage == "U";
-                    if (!io::setActivePack(vanilla ? "none" : stage, &why))
-                        QS_INFO("season: no pack for stage %s (%s): vanilla textures", stage.c_str(), why.c_str());
-                }
+                QS_INFO("season: %s, stage %s (temperate calendar; textures follow their own stage)",
+                        cfg.dayToLabel(day).c_str(), stage.c_str());
                 lastStage = stage;
             }
             sinceSave += dt;

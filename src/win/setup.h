@@ -21,9 +21,10 @@ struct Config {
     bool testMode = false;
     std::wstring gameRootOverride;
     // [Packs] season packs written by qs_gen (see io_hooks.h, packsStart / setActivePack)
-    std::string activePack;          // stage id ("A>W.2") or file name ("A-W.2.qsp"); empty = none
+    std::string activePack;          // manual override: stage id ("A>W.2"), file name ("A-W.2.qsp") or "U";
+                                     // empty = automatic per-texture stages (io::setSeasonDay)
     std::wstring packFolder = L"QuattroStagioni\\packs";  // relative to bin64\scripts (or absolute)
-    int packCacheMB = 64;            // payload cache bound
+    int packCacheMB = 64;            // payload cache bound, split between the open packs
 };
 
 // One .paz archive that contains at least one substitution.

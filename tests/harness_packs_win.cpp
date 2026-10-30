@@ -5,15 +5,18 @@
 // transform, installs the hooks, starts the packs and reads every .paz with synchronous ReadFile
 // (random unaligned chunks), overlapped ReadFile + GetOverlappedResult and whole entries, checking
 // byte-exactly that pack records come back patched and everything else untouched. Then switches the
-// pack at runtime (none, W, A) and checks subsequent reads follow.
+// pack at runtime (none, W, A) and checks subsequent reads follow. Finally the per-texture season mode:
+// io::setSeasonDay with packs A, A>W.1, A>W.3, W (A>W.2 missing -> fallback), reads compared with the
+// core assignment (pack/multi.h), status API, override on top of the season mode and back.
 // Not built by build.sh (it only picks tests/test_*.cpp); build manually:
 //   x86_64-w64-mingw32-g++ -std=c++17 -O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
-//     -municode -Ithird_party/minhook/include -Isrc/core -Ithird_party/lz4 -Isrc/win tests/harness_packs_win.cpp
+//     -municode -Ithird_party/minhook/include -Isrc/core -Ithird_party/lz4 -Isrc/win -Ithird_party/rgbcx -Ithird_party/stb tests/harness_packs_win.cpp
 //     src/win/io_hooks.cpp src/win/setup.cpp src/win/log.cpp src/win/winutil.cpp src/win/qs_state.cpp
 //     $(find src/core -name '*.cpp') build/w_*.o -o build/harness_packs_win.exe -static -static-libgcc -static-libstdc++
 //   wine build/harness_packs_win.exe
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <random>
 #include <string>
@@ -21,6 +24,7 @@
 
 #include "../src/core/gen/pipeline.h"
 #include "../src/core/ini.h"
+#include "../src/core/pack/multi.h"
 #include "../src/core/pack/qsp_io.h"
 #include "io_hooks.h"
 #include "log.h"
@@ -35,6 +39,30 @@ struct PazCase {
     std::wstring path;
     std::vector<uint8_t> orig, expectA, expectW;
 };
+
+static bool generateMulti(const std::string& root, const std::string& classesJson, const std::vector<std::string>& ids,
+                          const std::string& dir) {
+    qs::gen::GameArchive ar;
+    qs::gen::Inventory inv;
+    std::vector<std::string> errs;
+    if (!ar.open(root) || !qs::gen::parseInventory(classesJson, inv, errs)) return false;
+    auto tr = qs::gen::makeTintTransform();
+    std::vector<qs::gen::StageSpec> stages;
+    std::vector<std::string> outs;
+    for (const std::string& id : ids) {
+        qs::gen::StageSpec st;
+        qs::gen::parseStage(id, 3, st);
+        stages.push_back(st);
+        outs.push_back(dir + "\\" + st.fileName());
+    }
+    qs::gen::GenOptions o;
+    o.threads = 2;
+    std::vector<qs::gen::GenSummary> sums;
+    std::string err;
+    bool ok = qs::gen::runGenerationMulti(ar, inv.items, *tr, stages, outs, o, sums, &err);
+    if (!ok) std::printf("multi generation failed: %s\n", err.c_str());
+    return ok;
+}
 
 static bool generate(const std::string& root, const std::string& classesJson, const char* stage, const std::string& out) {
     qs::gen::GameArchive ar;
@@ -51,6 +79,35 @@ static bool generate(const std::string& root, const std::string& classesJson, co
     bool ok = qs::gen::runGeneration(ar, inv.items, *tr, o, s, &err);
     if (!ok) std::printf("generation %s failed: %s\n", stage, err.c_str());
     return ok && s.records > 0;
+}
+
+// Expected paz bytes for the season mode at `day`: the core assignment over every pack in `files`.
+static std::vector<uint8_t> expectedSeason(const std::vector<std::string>& files, const qs::season::SeasonConfig& cfg,
+                                           double day, const std::string& key, const std::vector<uint8_t>& orig,
+                                           size_t* served = nullptr) {
+    std::vector<std::shared_ptr<qs::pack::LoadedPack>> packs;
+    for (const std::string& f : files) {
+        std::shared_ptr<qs::pack::LoadedPack> lp(new qs::pack::LoadedPack());
+        lp->server.reset(new qs::pack::PackServer());
+        if (!lp->server->open(qs::pack::openFileSource(f), 1 << 20)) continue;
+        lp->stageId = lp->server->reader().header().stageId;
+        packs.push_back(lp);
+    }
+    auto idx = qs::pack::TextureIndex::build(packs);
+    auto snap = qs::pack::assignStages(idx, cfg, day);
+    if (served) *served = snap->servedTextures;
+    std::vector<uint8_t> e = orig;
+    const int slot = idx->findPaz(key);
+    if (slot < 0) return e;
+    const qs::pack::TextureIndex::Paz& z = idx->paz()[size_t(slot)];
+    for (uint32_t t = z.first; t < z.first + z.count; ++t) {
+        if (snap->serve[t] < 0) continue;
+        const qs::pack::PackReader& r = idx->packs()[size_t(snap->serve[t])]->server->reader();
+        std::vector<uint8_t> pl;
+        r.readPayload(r.records()[idx->record(t, size_t(snap->serve[t]))], pl);
+        std::memcpy(e.data() + idx->textures()[t].offset, pl.data(), pl.size());
+    }
+    return e;
 }
 
 static std::vector<uint8_t> expected(const std::string& packPath, const std::string& key, const std::vector<uint8_t>& orig) {
@@ -133,6 +190,12 @@ int wmain() {
         cases.push_back(c);
     }
 
+    // Generated before the hooks are installed (qs_gen must read the original bytes); the folder is
+    // rescanned when the override ends below. Kept aside until then so availablePacks() sees 2 files.
+    const std::string later = base + "\\later";
+    std::filesystem::create_directories(std::filesystem::u8path(later));
+    CHECK(generateMulti(root, arc.classesJson, {"A>W.1", "A>W.3"}, later));
+
     qs::Config cfg;
     cfg.testMode = true;
     cfg.gameRootOverride = qs::widen(root);
@@ -172,6 +235,70 @@ int wmain() {
     CHECK(qs::io::activePackStage() == "W");
     CHECK(qs::io::setActivePack("A.qsp", &why));
     checkAll(1, "pack A again");
+
+    // ---- per-texture season mode ----------------------------------------------------------------
+    for (const char* f : {"A-W.1.qsp", "A-W.3.qsp"})
+        MoveFileW(qs::widen(later + "\\" + f).c_str(), qs::widen(packs + "\\" + f).c_str());
+    CHECK(qs::io::setActivePack("none", &why));   // end the override: no season day yet -> vanilla
+    CHECK(qs::io::activePackStage().empty());
+    checkAll(0, "override ended, no day");
+    qs::season::SeasonConfig scfg;
+    scfg.setDefaults();
+    const double wStart = scfg.phaseStartDay(qs::season::Phase::Winter);
+    const std::vector<std::string> files = {packs + "\\A.qsp", packs + "\\A-W.1.qsp", packs + "\\A-W.3.qsp",
+                                            packs + "\\W.qsp"};
+    auto checkSeason = [&](double day, const char* what) {
+        for (const PazCase& c : cases) {
+            std::string key = qs::narrow(c.path).substr(root.size() + 1);
+            for (char& ch : key) if (ch == '\\') ch = '/';
+            const std::vector<uint8_t> want = expectedSeason(files, scfg, day, key, c.orig);
+            std::vector<uint8_t> a = readSyncChunks(c.path, c.orig.size(), rng, 9000);
+            std::vector<uint8_t> o5 = readOverlapped(c.path, c.orig.size(), 5000);
+            bool ok = a == want && o5 == want;
+            if (!ok) std::printf("  mismatch (%s) in %s: sync9000 %d ov5000 %d\n", what, key.c_str(), a == want, o5 == want);
+            CHECK(ok);
+        }
+    };
+    double day = wStart - 0.8;
+    qs::io::setSeasonDay(day, scfg);
+    qs::io::PacksStatus ps = qs::io::packsStatus();
+    CHECK(ps.started && ps.seasonDriven && !ps.forced);
+    CHECK(ps.open.size() >= 3);
+    CHECK(std::find(ps.missingNow.begin(), ps.missingNow.end(), "A>W.2") != ps.missingNow.end());
+    CHECK(ps.texturesServed > 0 && ps.texturesFallback > 0 && ps.texturesIndexed >= ps.texturesServed);
+    CHECK(ps.available.size() == 4 && ps.planDays == 7 && !ps.plan.stages.empty());
+    CHECK(ps.cacheLimitBytes == (1u << 20) && ps.indexBytes > 0);
+    size_t served = 0;
+    expectedSeason(files, scfg, day, "0001/0.paz", cases[0].orig, &served);
+    CHECK(ps.texturesServed == served);
+    checkSeason(day, "season day 1");
+    ps = qs::io::packsStatus();
+    uint64_t patched = 0, fallbackPatched = 0;
+    for (const auto& p : ps.open) { patched += p.patched; fallbackPatched += p.fallbackPatched; CHECK(p.formatVersion == 2); }
+    CHECK(patched > 0 && fallbackPatched > 0);
+    // Days pass: the assignment follows per texture (several snapshots, some packs closed/opened).
+    for (double d2 : {wStart - 0.3, wStart + 0.6, wStart + 2.5}) {
+        for (double x = day; x < d2; x += 0.01) qs::io::setSeasonDay(x, scfg);
+        day = d2;
+        qs::io::setSeasonDay(day, scfg);
+        checkSeason(day, "season sweep");
+    }
+    CHECK(qs::io::packsStatus().snapshotSwaps > 3);
+    qs::pack::StagePlan plan = qs::io::planStages(30);
+    CHECK(plan.missingCount > 0 && plan.presentCount > 0);
+    // Override on top of the season mode, then back.
+    CHECK(qs::io::setActivePack("A", &why) && qs::io::activePackStage() == "A");
+    CHECK(qs::io::packsStatus().forced && qs::io::openPackStages().size() == 1);
+    checkAll(1, "override A in season mode");
+    qs::io::setSeasonDay(day + 0.01, scfg);       // ignored while forced
+    checkAll(1, "override A after a tick");
+    CHECK(qs::io::setActivePack("U", &why) && qs::io::packsStatus().forced);
+    checkAll(0, "override vanilla");
+    CHECK(qs::io::setActivePack("none", &why) && qs::io::packsStatus().seasonDriven);
+    checkSeason(day + 0.01, "season after override");
+    // Late summer: L and U>L have no pack, the walk back reaches vanilla summer.
+    qs::io::setSeasonDay(scfg.phaseStartDay(qs::season::Phase::LateSummer) + 1.0, scfg);
+    checkAll(0, "late summer, no packs");
 
     qs::io::logSummary("harness");
     qs::io::packsStop();

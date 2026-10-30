@@ -25,6 +25,10 @@ struct Record {
     uint8_t flags = 0;          // pamt flags (compression | crypto << 4), informational
     uint32_t pazSlot = 0;       // index into PackReader::paz()
     uint32_t chunkFirst = 0;    // first original-chunk hash of this record (see qsp_io.h)
+    // Added for per-texture stages (format v2, multi.h):
+    uint8_t region = 0;         // season::Region of the texture (Temperate when unknown)
+    uint32_t assetSeed = 0;     // lookup3(asset, 0xC5EDE): same seed for every texture of one asset
+    bool hasMeta = false;       // region/assetSeed were read from a v2 pack (false for v1 packs)
 };
 
 struct Header {
@@ -34,6 +38,9 @@ struct Header {
     uint32_t recipeVersion = 0;
     // Added by the generator stream (qsp_io.h):
     std::string generator;      // qs_gen version and transform name
+    // Added for per-texture stages (format v2):
+    uint32_t formatVersion = 0; // file format version read from the pack (1 or 2)
+    uint32_t transitionSteps = 0;  // transition steps the stage id refers to (0 = unknown, v1)
 };
 
 // Writer/reader API: qsp_io.h (file format), serve.h (substitution of game reads from a pack).

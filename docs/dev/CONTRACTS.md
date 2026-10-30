@@ -70,3 +70,18 @@ devono usare lo stesso seme: `seed = lookup3(asset, 0xC5EDE)`.
     `-DQS_HAVE_RECIPES` in `EXTRA_CORE_FLAGS`). Uso atteso: `tex::EncodeOptions::fitBias` 0..10,
     `RecipeBook::apply` su mip 0, poi `tex::rebuildMips`; `RecipeBook` usato da piu thread in sola
     lettura (`affects`/`apply` const devono essere thread safe).
+- 30/10, flusso generatore + pacchetti, stadi per texture (solo aggiunte, una semantica cambiata):
+  - `pack/qsp.h`: `Record::region`, `assetSeed`, `hasMeta`; `Header::formatVersion`, `transitionSteps`.
+    Formato `.qsp` v2 (`kFormatVersion` 2, il lettore accetta ancora v1), dettagli in `qsp_io.h`;
+    `PackWriter::setFormatVersion`.
+  - `pack/serve.h`: `RecordResult`, `PackServer::applyRecord`, `setCacheLimit`, `cacheLimit`.
+  - Nuovi: `pack/multi.h` (`LoadedPack`, `TextureIndex`, `ServeSnapshot`, `assignStages`,
+    `assignForced`, `stageConfigKey`, `SnapshotSlot`), `pack/plan.h` (`planStages`, `StagePlan`,
+    `fallbackStage`, `packsToOpen`, `stageFileName`, `stageIdFromFileName`, `stageCalendarIndex`).
+  - `gen`: `runGenerationMulti`, `regionOf(Item)`, `estimateStageBytes`; `processTexture` accetta un
+    offset diverso dal pamt reale se paz e dimensioni coincidono (nota nel messaggio).
+  - `src/win/io_hooks.h`: nuove `io::setSeasonDay`, `io::packsStatus` (+ `PackStatus`, `PacksStatus`),
+    `io::planStages`, `io::openPackStages`. CAMBIATA la semantica di `setActivePack`: ora e un
+    override globale; `""`/`"none"` lo toglie (torna allo stadio per texture), `"U"`/`"vanilla"` forza
+    le texture originali. `activePackStage()` restituisce solo lo stadio dell'override.
+  - `src/win/season_tick.cpp` chiama `io::setSeasonDay(day, cfg)` a ogni tick al posto di `setActivePack`.
