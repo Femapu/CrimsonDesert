@@ -16,3 +16,6 @@ build/
 *.exe
 *.o
 __pycache__/
+
+# copie di lavoro degli agenti (worktree locali)
+.claude/worktrees/
