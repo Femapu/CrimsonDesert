@@ -13,6 +13,8 @@
 // and paz sizes; original bytes are verified per read by the pack server (core/pack/serve.h).
 #include "setup.h"
 
+#include "known_builds.h"
+
 #include <windows.h>
 
 #include <cstring>
@@ -31,15 +33,11 @@
 namespace qs {
 namespace {
 
-// ---- Baked fingerprint of Crimson Desert 2.04.00 (Steam, with "Charting the Unknown") ----------
-// meta/0.paver: u16 2, u16 4, u16 0, u32 1, {u32 6, "dlc_01", u32 0}, u32 hashlittle(paver[0:24])
-const char* const kPaver204Hex = "0200040000000100000006000000646c635f30310000000047396a31";
-// Known 2.04.00 executables: launch build (2026-10-29) and the hotfix exe shipped 2026-10-30.
-struct KnownExe { uint64_t size; uint32_t ts; };
-const KnownExe kKnownExes[] = { {333779352ull, 1793246886u}, {336264088ull, 1793296370u} };
-const uint64_t kExeSize204 = 336264088ull;
-const uint32_t kExeTimestamp204 = 1793296370u;
-const char* const kGameVersion = "2.04.00";
+// Baked fingerprint of the supported game builds: single list shared with qs_install.
+const char* const kPaver204Hex = builds::kPaverHex;
+const uint64_t kExeSize204 = builds::kLatestExe.size;
+const uint32_t kExeTimestamp204 = builds::kLatestExe.timestamp;
+const char* const kGameVersion = builds::kGameVersion;
 
 bool readPeTimestamp(const std::wstring& exe, uint32_t& ts) {
     std::vector<uint8_t> h;
@@ -318,7 +316,7 @@ SetupResult runSetup(const Config& cfg, const std::wstring& scriptsDir) {
     uint32_t ts = 0;
     bool exeOk = false;
     if (fileSize(exe, exeSize) && readPeTimestamp(exe, ts))
-        for (const KnownExe& k : kKnownExes) if (exeSize == k.size && ts == k.ts) exeOk = true;
+        exeOk = builds::findKnownExe(exeSize, ts) != nullptr;
     QS_INFO("version check: exe size %llu timestamp %u (expected %llu / %u) -> %s%s", (unsigned long long)exeSize, ts,
             (unsigned long long)kExeSize204, kExeTimestamp204, exeOk ? "OK" : "MISMATCH",
             (!exeOk && cfg.testMode) ? " (ignored: [Debug] TestMode=1)" : "");
