@@ -106,9 +106,40 @@ dell'asset. Texture, PNG e log restano in `local-out/` (script: `local-out/scrip
 Taratura di `data/recipes/vegetation.ini`: in attesa del parere di Stefano sulla galleria
 (`local-out/prev/index.html`).
 
-## 3. Primo pacchetto in gioco
+## 3. Primo pacchetto in gioco (30/10/2026)
 
-Da fare.
+Installazione: contenuto di `dist-ci/bin64/scripts` in `bin64\scripts` (sha256 dell'asi verificato),
+`winmm.ini` già identico, vecchia 0.2.0 salvata in `local-out/backup_0.2.0`. Nell'ini `Active=A`.
+Restano `manifest.ini` e `test.bin` della fase 2 (logo di caricamento arancione), che funzionano ancora.
+
+### Generazione dello stadio A
+
+`qs_gen.exe --game ... --stage A --out "<bin64>\scripts\QuattroStagioni\packs"`, 43 s:
+
+- 3688 voci, lo stadio cambia 3058 texture; 2963 a piena qualità, 8 con fitBias, 0 a forza
+  ridotta, 0 lasciate vanilla per mancato fit: **tasso di fit 100%** (2971 su 2971 tentate).
+- 630 non toccate dallo stadio, 85 identiche dopo la ricetta, 2 saltate per B1 (codice di uscita 3
+  solo per queste).
+- `A.qsp`: 2971 record in 20 archivi, 726 MB. `--check-pack`: tutto OK.
+
+### Sessione di gioco (13:44-13:50, circa 5 minuti)
+
+Dal log del plugin 0.3.0:
+
+- Avvio in 41 ms: hook dei file, pacchetti, motore stagioni e overlay attivi; probe spenti.
+  Riconosciuti Streamline, XeSS frame generation, overlay di Steam e l'Ultimate ASI Loader.
+- Pacchetto A verificato in circa 10 ms a ogni attivazione.
+- Menu F5: usato più volte (Autunno, Estate, Inverno, Autunno, Inverno), il config viene salvato
+  dal menu ogni volta (`DaySource = manual`, `StartDay = 29` nell'ini).
+- Lettura delle texture: circa 5.000 record serviti dal pacchetto, **0 rifiutati, 0 errori di
+  payload, 0 letture in sospeso**; patch di una lettura tra 0,01 e 0,4 ms. Nessun segno di
+  rallentamento dello streaming nel log (`WaitForTargetReads=1`).
+- Cache: satura a 64 MB nei primi due minuti (prima del passaggio ad Autunno), poi 18-27 MB.
+- Passaggio a Estate: pacchetto "none", corretto. Il cambio vale solo per le texture caricate
+  dopo (limite noto, HANDOFF passo 6).
+- Bug sulla scelta del pacchetto quando quello dello stadio non esiste: vedi BUGS.md, B3.
+
+Osservazioni visive di Stefano: in attesa.
 
 ## 4. Menu F5 in gioco
 

@@ -28,3 +28,23 @@ estratti).
   suffisso da mappa non di colore (`_normal`, `_n`, `_sp`, `_mask`, `_height`).
 - **Correzione proposta**: escluderle nel classificatore con una regola sul suffisso, e come rete di
   sicurezza far rifiutare al generatore le voci il cui nome indica un ruolo non di colore.
+
+## B3. Stadio senza pacchetto: resta attivo il pacchetto precedente, ma il log dice "vanilla" (aperto)
+
+- **Dove**: `src/win/season_tick.*` (scelta del pacchetto per stadio) e caricamento in `src/win/io_hooks.*`.
+- **Sintomo** (sessione del 30/10, solo pacchetto `A.qsp` presente):
+  - all'avvio `Active=A` carica A, ma 0,6 s dopo il calendario (giorno 0, Primavera) chiede lo
+    stadio S: `S.qsp refused: cannot open ... (the previous pack stays active)` seguito da
+    `season: no pack for stage S ...: vanilla textures`. In realtà A resta attivo e continua a
+    servire texture (oltre 2400 record nei due minuti successivi): in Primavera si vede l'autunno;
+  - stessa cosa passando da Autunno a Inverno dal menu: `W.qsp` non c'è, il log dice "vanilla
+    textures" ma il riepilogo successivo mostra ancora `pack A` con letture servite.
+  - Da Estate a Inverno invece resta "none", perché il precedente era già nessuno.
+- **Effetto**: con pacchetti mancanti (installazione parziale, o generati solo alcuni stadi) il
+  paesaggio mostra la stagione sbagliata, e il log descrive il contrario di ciò che succede.
+  Inoltre `Active` nell'ini viene scavalcato subito dal calendario, quindi non serve a forzare uno
+  stadio come dice il commento.
+- **Correzione proposta**: decidere un comportamento unico (consiglio: stadio senza pacchetto ->
+  nessun pacchetto, cioè vanilla, oppure il pacchetto disponibile più vicino nel ciclo, scritto
+  chiaramente nel log) e far rispettare `Active` finché il calendario non cambia stadio o finché
+  l'utente non sceglie dal menu.
