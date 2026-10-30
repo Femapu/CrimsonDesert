@@ -12,6 +12,9 @@
 #include <string>
 #include <vector>
 
+#include <memory>
+
+#include "../core/pack/multi.h"
 #include "../core/pack/plan.h"
 #include "../core/season/season.h"
 #include "setup.h"
@@ -53,6 +56,10 @@ void setSeasonDay(double day, const season::SeasonConfig& cfg);
 // referenced 0.pamt files), so call it from the menu or the tick, never from a hook. On failure the
 // previous state stays. Thread safe.
 bool setActivePack(const std::string& stageOrFile, std::string* why = nullptr);
+
+// What the read hooks serve right now (per-texture stages or the manual override), for the GPU live
+// swap (src/win/gpu/): an immutable snapshot, nullptr while nothing is published. Cheap (atomic copy).
+std::shared_ptr<const pack::ServeSnapshot> serveSnapshot();
 
 // Stage id of the manual override ("" if none: season-driven or nothing open).
 std::string activePackStage();

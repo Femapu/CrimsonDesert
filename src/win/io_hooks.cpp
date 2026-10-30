@@ -1182,6 +1182,8 @@ bool setActivePack(const std::string& stageOrFile, std::string* whyOut) {
     return ok;
 }
 
+std::shared_ptr<const pack::ServeSnapshot> serveSnapshot() { return g_serve.get(); }
+
 std::string activePackStage() {
     AcquireSRWLockShared(&g_statusLock);
     std::string s = g_status.forced ? g_status.forcedStage : std::string();

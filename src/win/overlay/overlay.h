@@ -15,6 +15,8 @@
 #pragma once
 #include <string>
 
+struct ID3D12CommandQueue;
+
 namespace qs {
 
 // Starts the overlay worker (idempotent). Returns false only if the worker could not be started.
@@ -26,6 +28,16 @@ void overlayStop();
 void overlaySetToggleKey(int vk);
 // True while the overlay is bound to a swapchain and drawing (for the status line / diagnostics).
 bool overlayActive();
+// The game's DIRECT command queue the overlay is bound to (the queue that owns the swapchain), with a
+// reference added (the caller releases it), or nullptr while not bound. Used by the GPU swap module
+// (src/win/gpu/) to submit its texture uploads in the game's queue order.
+ID3D12CommandQueue* overlayAcquireGameQueue();
+// Called on the game's present thread inside the overlay's Present hook, after the overlay has drawn,
+// with the queue the overlay is bound to (the GPU swap submits its batch there, in the game's own
+// submission order). Runs under the overlay render lock: it must not block and must not call
+// overlayAcquireGameQueue(). Setting nullptr returns only when no call is running any more.
+using PresentCallback = void (*)(ID3D12CommandQueue* queue);
+void overlaySetPresentCallback(PresentCallback cb);
 
 // Save request from the menu ("Salva" button). The callback returns true on success; `error` is
 // shown in the menu when it returns false.

@@ -800,6 +800,8 @@ void renderFrame() {
     (void)submitted;
 }
 
+std::atomic<PresentCallback> g_presentCb{nullptr};
+
 void onPresent(IDXGISwapChain* sc) {
     if (!running()) return;
     g_presentThreadId.store(GetCurrentThreadId());
@@ -846,6 +848,12 @@ void onPresent(IDXGISwapChain* sc) {
     }
     g_keyWasDown = down;
     renderFrame();
+    if (PresentCallback cb = g_presentCb.load()) {
+        try {
+            cb(R.queue);
+        } catch (...) {
+        }
+    }
     ReleaseSRWLockExclusive(&g_renderLock);
 }
 
@@ -1215,6 +1223,23 @@ void overlaySetToggleKey(int vk) {
 }
 
 bool overlayActive() { return running() && R.buffersReady; }
+
+void overlaySetPresentCallback(PresentCallback cb) {
+    g_presentCb.store(cb);
+    if (!cb) {  // calls run under the exclusive render lock: once we get it, none is running
+        AcquireSRWLockExclusive(&g_renderLock);
+        ReleaseSRWLockExclusive(&g_renderLock);
+    }
+}
+
+ID3D12CommandQueue* overlayAcquireGameQueue() {
+    if (!running()) return nullptr;
+    AcquireSRWLockShared(&g_renderLock);
+    ID3D12CommandQueue* q = R.queue;
+    if (q) q->AddRef();
+    ReleaseSRWLockShared(&g_renderLock);
+    return q;
+}
 
 }  // namespace qs
 
