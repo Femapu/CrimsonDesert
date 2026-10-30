@@ -152,7 +152,12 @@ Osservazioni visive di Stefano:
 
 ## 4. Menu F5 in gioco
 
-Da fare.
+Saltata su scelta di Stefano (30/10). Quello che risulta dalla sessione della tappa 3, con frame
+generation XeSS attiva: il menu si apre, 5 cambi di stagione applicati, config salvato 8 volte
+dal menu, nessun errore dell'overlay (né sul subclass della finestra né sulla GPU). Non verificati:
+blocco dell'input, frame generation spenta, persistenza dopo un riavvio, leggibilità delle schede.
+Nota per la sessione cloud: il plugin non scrive nel log apertura/chiusura del menu né lo stato del
+blocco input; una riga INFO per ciascuno renderebbe verificabile questa tappa dal solo log.
 
 ## 5. Probe (A1-b)
 
