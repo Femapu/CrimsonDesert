@@ -17,20 +17,14 @@ const char* toString(SectionKind k) {
 }
 
 void classifySections(std::vector<Section>& secs, uint32_t entryRva) {
-    std::vector<size_t> candidates;  // executable, not writable
-    for (size_t i = 0; i < secs.size(); ++i)
-        if (secs[i].executable() && !secs[i].writable() && secs[i].vsize) candidates.push_back(i);
-    if (candidates.size() > 1) {
-        // A protected build starts in the protector: the entry section is not game code.
-        for (size_t k = 0; k < candidates.size(); ++k)
-            if (secs[candidates[k]].contains(entryRva)) {
-                candidates.erase(candidates.begin() + long(k));
-                break;
-            }
-    }
+    // Game code comes first in the image (RVA 0x1000 in every build seen so far); the protector
+    // appends its sections after it. The entry point is not used as a criterion (it lies in the
+    // protector for the game, in the code section for a normal exe) but is kept for logging.
+    (void)entryRva;
     size_t primary = SIZE_MAX;
-    for (size_t i : candidates)
-        if (primary == SIZE_MAX || secs[i].rva < secs[primary].rva) primary = i;
+    for (size_t i = 0; i < secs.size(); ++i)
+        if (secs[i].executable() && !secs[i].writable() && secs[i].vsize && (primary == SIZE_MAX || secs[i].rva < secs[primary].rva))
+            primary = i;
     for (size_t i = 0; i < secs.size(); ++i) {
         Section& s = secs[i];
         if (s.executable()) s.kind = (i == primary) ? SectionKind::Code : SectionKind::Obfuscated;

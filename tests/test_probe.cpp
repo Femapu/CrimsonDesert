@@ -87,7 +87,11 @@ static void testClassify() {
     CHECK(s[2].kind == SectionKind::Data);
     CHECK(s[3].kind == SectionKind::Obfuscated);
     CHECK(s[4].kind == SectionKind::Obfuscated);
-    // entry point inside the low R-X section while another R-X exists: the low one is the protector
+    // the entry point does not matter: the lowest non-writable executable section is the game code
+    classifySections(s, 0x1800);
+    CHECK(s[0].kind == SectionKind::Code && s[4].kind == SectionKind::Obfuscated);
+    // a writable executable section is never the game code, even at the lowest RVA
+    s[0].characteristics |= kScnMemWrite;
     classifySections(s, 0x1800);
     CHECK(s[0].kind == SectionKind::Obfuscated && s[4].kind == SectionKind::Code);
     // single code section with the entry point (normal exe): it is the game code
@@ -363,6 +367,10 @@ static void testStub() {
     size_t pops = s.originalSlotOffset - 6 - 11;  // pop r11,r10,rax,r9,r8,rdx,rcx = 11 bytes
     const uint8_t popSeq[] = {0x41, 0x5B, 0x41, 0x5A, 0x58, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59};
     CHECK(std::memcmp(&s.code[pops], popSeq, sizeof(popSeq)) == 0);
+    CaptureStub e = buildCaptureStub(1, 2, 3, 4096);
+    CHECK(e.originalSlotOffset == 4096 && e.code.size() == s.code.size() - 8);
+    CHECK(e.code[e.code.size() - 6] == 0xFF && e.code[e.code.size() - 5] == 0x25);
+    CHECK(readU32(&e.code[e.code.size() - 4]) + e.code.size() == 4096);  // rip after jmp + disp == slot
     std::vector<uint8_t> copy = s.code;
     setStubOriginal(copy.data(), s, 42);
     CHECK(readU64(copy.data() + s.originalSlotOffset) == 42);

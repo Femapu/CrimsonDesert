@@ -18,10 +18,14 @@ namespace qs::probe {
 
 struct CaptureStub {
     std::vector<uint8_t> code;
-    size_t originalSlotOffset = 0;  // offset of the 8-byte absolute address of the original function
+    size_t originalSlotOffset = 0;  // offset (from stub start) of the 8-byte address of the original function
 };
 
-CaptureStub buildCaptureStub(uint64_t ctx, uint64_t callback, uint64_t original);
+// externalSlot == 0: the original pointer is stored inline after the final jmp.
+// externalSlot  > 0: the final "jmp [rip+disp]" reads the pointer at stub+externalSlot instead
+// (e.g. on a separate read-write page, so the code page can be made executable before MinHook,
+// which insists on an executable detour, hands out the trampoline address).
+CaptureStub buildCaptureStub(uint64_t ctx, uint64_t callback, uint64_t original, uint32_t externalSlot = 0);
 // Rewrites the original-function pointer inside an already generated stub buffer.
 void setStubOriginal(uint8_t* stubCode, const CaptureStub& layout, uint64_t original);
 

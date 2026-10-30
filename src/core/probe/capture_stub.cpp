@@ -17,7 +17,7 @@ void emit64(std::vector<uint8_t>& c, uint64_t v) {
 
 }  // namespace
 
-CaptureStub buildCaptureStub(uint64_t ctx, uint64_t callback, uint64_t original) {
+CaptureStub buildCaptureStub(uint64_t ctx, uint64_t callback, uint64_t original, uint32_t externalSlot) {
     CaptureStub s;
     std::vector<uint8_t>& c = s.code;
     emit(c, {0x51});                    // push rcx
@@ -52,6 +52,12 @@ CaptureStub buildCaptureStub(uint64_t ctx, uint64_t callback, uint64_t original)
     emit(c, {0x41, 0x58});              // pop r8
     emit(c, {0x5A});                    // pop rdx
     emit(c, {0x59});                    // pop rcx
+    if (externalSlot) {
+        const uint32_t disp = externalSlot - uint32_t(c.size() + 6);
+        emit(c, {0xFF, 0x25, uint8_t(disp), uint8_t(disp >> 8), uint8_t(disp >> 16), uint8_t(disp >> 24)});  // jmp [rip+disp]
+        s.originalSlotOffset = externalSlot;  // caller stores `original` there
+        return s;
+    }
     emit(c, {0xFF, 0x25, 0, 0, 0, 0});  // jmp [rip+0]
     s.originalSlotOffset = c.size();
     emit64(c, original);

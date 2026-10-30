@@ -4,8 +4,8 @@
 // tests over a synthetic buffer. Section names are NOT trusted: Denuvo scrambles them per build
 // (recon C: game code was ".text1" in 2.04.00 and ".impdata" in the 30/10 hotfix, the protector
 // section ".code" then ".00cfg"). Sections are classified by characteristics and position:
-//   Code           the primary executable section (lowest RVA, not writable, no entry point when
-//                  there is an alternative): plain MSVC game code, safe to scan and hook
+//   Code           the primary executable section (lowest RVA, not writable): plain MSVC game
+//                  code, safe to scan and hook
 //   Obfuscated     every other executable section (protector VM, relocated/mutated functions,
 //                  RWX, the entry point): never scanned for signatures, never patched or hooked
 //   ReadOnlyData   initialised read-only data (RTTI, vtables, strings)
