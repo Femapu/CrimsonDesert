@@ -48,6 +48,14 @@ bool checkIndex(GameArchive& archive, const Item& item, const Group*& g, Texture
     }
     r.entry = it->second;
     std::string d = compareWithIndex(item, r.entry);
+    // A game hotfix can move an entry inside its paz without changing it: same paz, stored size, size
+    // and flags. The live pamt is the source of truth, so take its offset (noted in the log).
+    if (!d.empty() && item.paz == r.entry.pazIndex && item.stored == r.entry.storedSize && item.size == r.entry.size &&
+        item.offset != r.entry.offset) {
+        r.message = "offset " + std::to_string(item.offset) + " -> " + std::to_string(r.entry.offset) +
+                    " taken from the live pamt (inventory is stale, entry unchanged)";
+        d.clear();
+    }
     if (!d.empty()) {
         r.outcome = Outcome::IndexMismatch;
         r.message = "inventory differs from pamt: " + d;
@@ -237,6 +245,7 @@ std::vector<TextureResult> processStages(GameArchive& archive, const Item& item,
     for (size_t i = 0; i < stages.size(); ++i) {
         eff[i] = effectiveStage(item, stages[i]);
         rs[i].entry = base.entry;
+        rs[i].message = base.message;
         if (eff[i].vanilla() || !transform.affects(item, eff[i])) rs[i].outcome = Outcome::Unaffected;
         else any = true;
     }
@@ -432,6 +441,8 @@ bool runGenerationMulti(GameArchive& archive, const std::vector<Item>& items, co
             }
             if (r.outcome == Outcome::Vanilla || r.outcome == Outcome::Error || r.outcome == Outcome::IndexMismatch)
                 log(tag(si) + std::string(toString(r.outcome)) + " " + it.group + "/" + it.path + ": " + r.message);
+            else if (si == 0 && !r.message.empty())
+                log("NOTE " + it.group + "/" + it.path + ": " + r.message);
             if (r.replacement.empty()) continue;
             const std::string key = pack::pazKey(it.group, r.entry.pazIndex);
             if (!pazDone[si].count(key)) {

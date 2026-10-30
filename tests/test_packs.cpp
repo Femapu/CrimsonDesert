@@ -154,6 +154,22 @@ static void testMultiGeneration(const gen::Inventory& inv) {
     CHECK(checked == pr.records().size());
 }
 
+// After a hotfix an entry may only move inside its paz: the live offset is used, with a note.
+static void testMovedEntry(const gen::Inventory& inv) {
+    gen::GameArchive ar;
+    ar.open(g_arc.root);
+    auto tr = gen::makeTintTransform();
+    gen::StageSpec st;
+    gen::parseStage("W", 3, st);
+    gen::Item moved = inv.items[0];
+    const uint64_t live = moved.offset;
+    moved.offset += 4096;
+    gen::TextureResult r = gen::processTexture(ar, moved, st, *tr, gen::FitPolicy());
+    CHECK(r.outcome == gen::Outcome::Fit && r.entry.offset == live && r.message.find("live pamt") != std::string::npos);
+    moved.stored += 1;  // a real change: still skipped
+    CHECK(gen::processTexture(ar, moved, st, *tr, gen::FitPolicy()).outcome == gen::Outcome::IndexMismatch);
+}
+
 // ---------------------------------------------------------------------------------------------
 // v1 packs (no region/seed) stay readable and servable.
 static void testV1Pack() {
@@ -485,6 +501,7 @@ int main(int argc, char** argv) {
         const gen::Inventory inv = inventory();
         testMultiGeneration(inv);
         testV1Pack();
+        testMovedEntry(inv);
         testPerTextureResolution();
         testConcurrentSwap();
         testPlan(inv);

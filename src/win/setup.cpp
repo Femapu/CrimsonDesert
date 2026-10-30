@@ -16,6 +16,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <map>
 
 #include "../core/dds.h"
 #include "../core/ini.h"
@@ -244,6 +245,35 @@ std::wstring resolvePackPath(const std::wstring& packsDir, const std::string& st
     return joinPath(packsDir, name);
 }
 
+namespace {
+
+// Stored and computed self hash of a 0.pamt. Several packs are verified against the same pamt files
+// (the plugin opens 2-4 packs at once and more as the days pass), so results are cached per path and
+// file size: the game files do not change while the game runs.
+bool pamtHashes(const std::wstring& path, uint32_t& stored, uint32_t& computed) {
+    struct Entry { uint64_t size; uint32_t stored, computed; };
+    static SRWLOCK lock = SRWLOCK_INIT;
+    static std::map<std::wstring, Entry> cache;
+    uint64_t size = 0;
+    if (!fileSize(path, size)) return false;
+    AcquireSRWLockShared(&lock);
+    auto it = cache.find(path);
+    const bool hit = it != cache.end() && it->second.size == size;
+    if (hit) { stored = it->second.stored; computed = it->second.computed; }
+    ReleaseSRWLockShared(&lock);
+    if (hit) return true;
+    std::vector<uint8_t> data;
+    if (!readWholeFile(path, data) || data.size() < 12) return false;
+    std::memcpy(&stored, data.data(), 4);
+    computed = cdHash(data.data() + 12, data.size() - 12);
+    AcquireSRWLockExclusive(&lock);
+    cache[path] = Entry{uint64_t(data.size()), stored, computed};
+    ReleaseSRWLockExclusive(&lock);
+    return true;
+}
+
+}  // namespace
+
 std::shared_ptr<pack::PackServer> loadVerifiedPack(const std::wstring& gameRoot, const std::wstring& packPath,
                                                    size_t cacheBytes, std::string& why) {
     try {
@@ -265,14 +295,11 @@ std::shared_ptr<pack::PackServer> loadVerifiedPack(const std::wstring& gameRoot,
             return nullptr;
         }
         for (const auto& g : hd.pamtHashes) {
-            std::vector<uint8_t> data;
-            if (!readWholeFile(joinPath(groupDir(gameRoot, g.first), L"0.pamt"), data) || data.size() < 12) {
+            uint32_t stored = 0, computed = 0;
+            if (!pamtHashes(joinPath(groupDir(gameRoot, g.first), L"0.pamt"), stored, computed)) {
                 why = "cannot read " + g.first + "/0.pamt";
                 return nullptr;
             }
-            uint32_t stored;
-            std::memcpy(&stored, data.data(), 4);
-            const uint32_t computed = cdHash(data.data() + 12, data.size() - 12);
             if (stored != computed || stored != g.second) {
                 char buf[160];
                 std::snprintf(buf, sizeof(buf), "%s/0.pamt hash %08X (computed %08X), pack expects %08X: regenerate the pack",
