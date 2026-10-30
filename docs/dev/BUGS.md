@@ -4,7 +4,7 @@ Bug emersi provando la mod sul PC di Stefano con i file veri del gioco (branch `
 Dettagli dei test in `docs/recon/test_locali.md`. Mai incollare qui dati del gioco (hash, offset,
 estratti).
 
-## B1. Inventario v1 non allineato al hotfix del 30/10 (aperto)
+## B1. Inventario v1 non allineato al hotfix del 30/10 (corretto, da riprovare in gioco)
 
 - **Dove**: `data/vegetation_classes_v1.json` (generato con `tools/classify_inventory.py`).
 - **Sintomo**: `qs_gen --verify-inventory` esce con codice 3: 2 voci su 3688 con "index mismatch",
@@ -18,7 +18,7 @@ estratti).
   far rileggere al generatore l'offset dal `0.pamt` vivo quando il resto della voce coincide, così una
   patch che sposta solo i dati non scarta le voci.
 
-## B2. Normal map nell'inventario con profilo di colore (aperto)
+## B2. Normal map nell'inventario con profilo di colore (corretto, da riprovare in gioco)
 
 - **Dove**: `data/vegetation_classes_v1.json`, regole di `tools/classify_inventory.py`.
 - **Sintomo**: `leaf_pine_common_b_01_normal.dds` e `leaf_pine_common_b_02_normal.dds` hanno
@@ -29,7 +29,7 @@ estratti).
 - **Correzione proposta**: escluderle nel classificatore con una regola sul suffisso, e come rete di
   sicurezza far rifiutare al generatore le voci il cui nome indica un ruolo non di colore.
 
-## B3. Stadio senza pacchetto: resta attivo il pacchetto precedente, ma il log dice "vanilla" (aperto)
+## B3. Stadio senza pacchetto: resta attivo il pacchetto precedente, ma il log dice "vanilla" (corretto, da riprovare in gioco)
 
 - **Dove**: `src/win/season_tick.*` (scelta del pacchetto per stadio) e caricamento in `src/win/io_hooks.*`.
 - **Sintomo** (sessione del 30/10, solo pacchetto `A.qsp` presente):

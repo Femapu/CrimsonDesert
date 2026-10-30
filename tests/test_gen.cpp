@@ -119,7 +119,7 @@ static void testJson() {
     if (fs::exists("data/vegetation_classes_v1.json")) {
         CHECK(gen::loadInventory("data/vegetation_classes_v1.json", inv, errs));
         CHECK(errs.empty());
-        CHECK(inv.items.size() == 3688);
+        CHECK(inv.items.size() == 3686);  // 3688 meno le 2 normal map escluse (B2)
     }
 }
 

@@ -9,8 +9,9 @@
 //      strength (0.75, 0.5, 0.25); if nothing fits the texture stays vanilla (not in the pack);
 //   4. the stored blob is assembled in the original layout, re-encrypted if needed and decoded again
 //      strictly; only a byte-exact round trip is accepted.
-// runGeneration processes items on N threads and commits results strictly in inventory order, so the
-// pack is byte-identical for any thread count. At most 4 x N finished results wait in memory.
+// runGeneration (one stage) and runGenerationMulti (several stages, one archive pass) process items on
+// N threads and commit results strictly in inventory order, so the pack is byte-identical for any
+// thread count. At most 4 x N finished results wait in memory.
 #pragma once
 #include <cstdint>
 #include <functional>
@@ -81,5 +82,14 @@ struct GenOptions {
 
 bool runGeneration(GameArchive& archive, const std::vector<Item>& items, const TextureTransform& transform,
                    const GenOptions& opt, GenSummary& summary, std::string* error = nullptr);
+
+// Several stages in ONE pass over the archive: every selected item is index-checked, read and decoded
+// once, then fitted for each stage that changes it. Writes one pack per stage (outPaths[i] for
+// stages[i]), each byte-identical to a single-stage runGeneration. opt.stage / opt.outPath are ignored;
+// opt.progress receives the summaries summed over the stages. Memory: up to 4 x threads items with
+// their results for every stage wait for the in-order commit.
+bool runGenerationMulti(GameArchive& archive, const std::vector<Item>& items, const TextureTransform& transform,
+                        const std::vector<StageSpec>& stages, const std::vector<std::string>& outPaths,
+                        const GenOptions& opt, std::vector<GenSummary>& summaries, std::string* error = nullptr);
 
 }  // namespace qs::gen

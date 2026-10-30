@@ -70,11 +70,11 @@ inline uint32_t rd32(const uint8_t* p) {
     return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
 }
 
-void buildHeader(uint8_t h[kHeaderSize], uint64_t indexOffset, uint64_t indexSize, uint64_t payloadSize, uint32_t nRec,
+void buildHeader(uint8_t h[kHeaderSize], uint32_t version, uint64_t indexOffset, uint64_t indexSize, uint64_t payloadSize, uint32_t nRec,
                  uint32_t indexHash) {
     Out o;
     o.b.insert(o.b.end(), kMagic, kMagic + 8);
-    o.u32(kFormatVersion);
+    o.u32(version);
     o.u32(kHeaderSize);
     o.u64(indexOffset);
     o.u64(indexSize);
@@ -209,6 +209,7 @@ bool PackWriter::finish(std::string* error) {
     o.str(header_.generator);
     o.u32(header_.recipeVersion);
     o.u32(kChunkShift);
+    if (version_ >= 2) o.u32(header_.transitionSteps);
     std::vector<std::pair<std::string, uint32_t>> groups = header_.pamtHashes;
     std::sort(groups.begin(), groups.end());
     groups.erase(std::unique(groups.begin(), groups.end()), groups.end());
@@ -229,6 +230,10 @@ bool PackWriter::finish(std::string* error) {
         o.u32(r.dataHash);
         o.u64(r.dataOffset);
         o.u32(chunkFirst);
+        if (version_ >= 2) {
+            o.u32(r.assetSeed);
+            o.u32(r.region);
+        }
         o.str(r.path);
         chunkFirst += uint32_t(recs_[k].chunks.size());
     }
@@ -239,7 +244,7 @@ bool PackWriter::finish(std::string* error) {
     const uint64_t indexOffset = kHeaderSize + payloadSize_;
     bool ok = std::fwrite(o.b.data(), 1, o.b.size(), f_) == o.b.size();
     uint8_t hdr[kHeaderSize];
-    buildHeader(hdr, indexOffset, o.b.size(), payloadSize_, uint32_t(order.size()), cdHash(o.b.data(), o.b.size()));
+    buildHeader(hdr, version_, indexOffset, o.b.size(), payloadSize_, uint32_t(order.size()), cdHash(o.b.data(), o.b.size()));
     ok = ok && seek64(f_, 0) && std::fwrite(hdr, 1, kHeaderSize, f_) == kHeaderSize;
     ok = (std::fflush(f_) == 0) && ok;
     ok = (std::fclose(f_) == 0) && ok;
@@ -280,7 +285,10 @@ bool PackReader::open(std::unique_ptr<ByteSource> src, std::string* error) {
     if (fileSize < kHeaderSize || !src->readAt(0, h, kHeaderSize)) return fail(error, "file too small for a pack header");
     if (std::memcmp(h, kMagic, 8) != 0) return fail(error, "not a QuattroStagioni pack (bad magic)");
     if (rd32(h + 60) != cdHash(h, 60)) return fail(error, "pack header hash mismatch (corrupt file)");
-    if (rd32(h + 8) != kFormatVersion) return fail(error, "unsupported pack format version " + std::to_string(rd32(h + 8)));
+    const uint32_t version = rd32(h + 8);
+    if (version < kMinFormatVersion || version > kFormatVersion)
+        return fail(error, "unsupported pack format version " + std::to_string(version) +
+                               (version > kFormatVersion ? " (made by a newer qs_gen: update the plugin)" : ""));
     if (rd32(h + 12) != kHeaderSize) return fail(error, "bad header size");
     const uint64_t indexOffset = rd64(h + 16), indexSize = rd64(h + 24);
     payloadOffset_ = rd64(h + 32);
@@ -300,6 +308,8 @@ bool PackReader::open(std::unique_ptr<ByteSource> src, std::string* error) {
     header_.generator = in.str();
     header_.recipeVersion = in.u32();
     if (in.u32() != kChunkShift) return fail(error, "unsupported chunk size");
+    header_.formatVersion = version;
+    if (version >= 2) header_.transitionSteps = in.u32();
     uint32_t n = in.u32();
     if (!in.ok || n > 100000) return fail(error, "bad group table");
     for (uint32_t i = 0; i < n && in.ok; ++i) {
@@ -332,6 +342,13 @@ bool PackReader::open(std::unique_ptr<ByteSource> src, std::string* error) {
         r.dataHash = in.u32();
         r.dataOffset = in.u64();
         r.chunkFirst = in.u32();
+        if (version >= 2) {
+            r.assetSeed = in.u32();
+            const uint32_t region = in.u32();
+            if (region > 255) return fail(error, "bad record region");
+            r.region = uint8_t(region);
+            r.hasMeta = true;
+        }
         r.path = in.str();
         recs_.push_back(std::move(r));
     }

@@ -5,6 +5,7 @@
 // Cycle: S -> U -> L -> A -> W -> S. '>' is not allowed in Windows file names, so pack files use
 // fileName() ("A-W.2.qsp").
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -34,5 +35,9 @@ struct EffectiveStage {
     bool vanilla() const { return from == 'U' && to == 'U'; }
 };
 EffectiveStage effectiveStage(const Item& item, const StageSpec& st);
+
+// Upper bound of a stage's pack payload: stored bytes of the items whose effective stage is not
+// vanilla (the transform and the fitter may still leave some out). 0 for "U" or a bad id.
+uint64_t estimateStageBytes(const std::vector<Item>& items, const std::string& stageId, int steps);
 
 }  // namespace qs::gen

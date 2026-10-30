@@ -31,15 +31,16 @@ CEREAL = ('barley', 'wheat', 'corn', 'rapeseed', 'sugarcane', 'rice', 'oat', 'ry
           'amaranth', 'cotton')
 FLOWER = ('flower', 'daisy', 'marigold', 'amaryllis', 'orchid', 'azalea', 'hibiscus', 'lavender', 'rose',
           'borage', 'tulip', 'poppy', 'lily', 'iris', 'peony', 'sunflower', 'camomile', 'chamomile', 'lupin',
-          'bluebell', 'violet', 'scorzonera', 'alchemilla', 'wildflower', 'annuals', 'conospermum')
+          'bluebell', 'violet', 'scorzonera', 'alchemilla', 'wildflower', 'annuals', 'conospermum', 'salvia')
 GRASS = ('grass', 'fescue', 'cogon', 'clover', 'reed', 'cattail', 'weed', 'sedge', 'rush', 'fern', 'herb',
-         'sorrel', 'pennyroyal', 'samphire', 'lespedeza', 'artemisia', 'sage', 'fennel')
+         'sorrel', 'pennyroyal', 'samphire', 'lespedeza', 'artemisia', 'fennel')
 SHRUB = ('bush', 'shrub', 'berr', 'rubus', 'thorn', 'azalea', 'buxus', 'rosemary', 'hedge', 'sapling')
 VINE = ('ivy', 'hedera', 'vine', 'moss', 'creeper')
 UNDERWATER = ('seaweed', 'seacoral', 'seakelp', 'seamustard', 'algae', 'starfish', 'shell', 'coral', 'kelp')
 INDOOR = ('flowerpot', '_pot_', 'pot_', 'basket', 'cd_in_', '_in_flower', 'bouquet', 'vase', 'wreath', 'dpf_')
 DEAD = ('burnt', 'deadleaves', 'dead_', '_dead', 'rotten', 'dry_', 'withered', 'stump', 'bare')
 
+NON_COLOUR_NAME = re.compile(r'_(normal|n|sp|mask|height|depth|dmap|ao)(_[a-z]{1,2})?\.dds$')
 ROLE_SUFFIX = re.compile(r'(_impostor)?_(color|subsurface|normal|depth|specular|height|dmap|mask|sp|n|tr|c|d|mix|ao)'
                          r'(_[a-z]{1,2})?$')
 
@@ -80,6 +81,8 @@ def classify(x):
         return None, 'excluded region ' + region
     if role not in COLOUR_ROLES:
         return None, 'non colour role ' + role
+    if NON_COLOUR_NAME.search(p):  # B2: role guessed wrong, the file name says normal/mask/...
+        return None, 'non colour map by name'
     if cls in ('prop_nonveg',) or has(p, INDOOR):
         return None, 'indoor or prop'
     if has(p, UNDERWATER) or (cls in ('aquatic', 'impostor_aquatic') and 'water' not in p and 'lily' not in p

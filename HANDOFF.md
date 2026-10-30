@@ -1,4 +1,4 @@
-# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, sessione cloud)
+# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, fine sessione cloud)
 
 ## Obiettivo
 Mod pubblicabile di stagioni dinamiche per Crimson Desert 2.04 con DLC "Charting the Unknown".
@@ -37,6 +37,53 @@ provato sui file veri o nel gioco: è stato provato su dati sintetici, sotto win
 
 Strumenti Windows (in `build/win/` o nell'artifact della CI): `qs_gen.exe`, `qs_preview.exe`,
 `qs_season.exe`, `qs_lz4exact.exe`.
+
+## Aggiornamento finale (30/10, sera)
+**Provato in gioco (sessione locale, `docs/recon/test_locali.md`):** inventario 3686/3688 OK, DLC senza
+vegetazione propria, fitter 100% (pacchetto A: 2971 texture, 726 MB, 43 s), in gioco circa 5000
+texture servite con 0 errori e senza rallentamenti, autunno ben visibile, menu F5 funzionante anche
+con frame generation XeSS.
+
+**Fatto dopo il test:** B2 corretto (normal map escluse per nome, salvia nel profilo `flower`);
+primavera e fine estate più marcate sulle latifoglie (`data/recipes/vegetation.ini`); installer
+`qs_install.exe` + guide utente (`docs/utente/`) + README + workflow di rilascio sui tag `v*`;
+lista unica delle build note (`src/core/known_builds.h`, usata da plugin e installer); lingua
+dell'interfaccia come il gioco (italiano incluso, inglese da `lang/en.txt`, `[General] Language=`).
+Nota: le ultime modifiche (B2, ricette, known_builds, lingua) hanno solo controlli rapidi: la build
+completa e i test li fa la CI su GitHub, controllare che l'ultima esecuzione sia verde.
+
+**Lavoro interrotto per budget, su branch separati (situazione superata, vedi sotto):**
+- `wip/pacchetti-per-texture`: pacchetti v2 con regione e seme per texture, più pacchetti aperti,
+  `qs_gen --plan`. Doveva includere anche B1 (offset dal pamt vivo) e B3 (stadio senza pacchetto).
+- `wip/gpu-swap`: nucleo portabile del cambio texture su GPU (impronte, indice, scheduler) + test.
+- `wip/agganci-gioco`: schema `targets.ini`, meteo, orologio, controller con ripristino.
+
+**Bug:** B1, B2 e B3 corretti, da riprovare in gioco (`docs/dev/BUGS.md`).
+
+**Prossimo per la sessione locale:** tappa 5 (probe, `docs/recon/probe_plan.md`), poi riprova
+Autunno/Inverno con il nuovo artifact generando sia `A.qsp` sia `W.qsp`.
+
+## Aggiornamento sessione cloud (30/10, notte)
+- **CI**: era rossa da tre esecuzioni. Cause: `test_gen` si aspettava 3688 voci (dopo B2 sono 3686) e
+  `tools/make_release.sh` non copiava la cartella `lang/`. Corrette entrambe; B1 e B3 (uniti con
+  `wip/pacchetti-per-texture`) sono "corretti, da riprovare in gioco" in `docs/dev/BUGS.md`.
+- **Applier uniti** (`wip/agganci-gioco`): `src/core/apply/`, `src/win/apply/`, `tests/test_apply.cpp`
+  (149 controlli), `docs/dev/appliers.md`, `targets.ini`. Collegati in `src/win/main.cpp`
+  (`applyStart()` dopo `probeStart()`, `applyStop()` prima di `probeStop()`); in
+  `src/win/season_tick.cpp` con `DaySource=gameclock` il calendario usa le ore del gioco quando
+  `applyReadGameClock()` le fornisce. `targets.ini` esce TUTTO SPENTO: in gioco non cambia nulla
+  finché non si inseriscono gli indirizzi trovati con i probe.
+- **GPU swap**: unito solo il nucleo portabile (`src/core/gpu/`, `tests/test_gpu.cpp`, 142 controlli),
+  non chiamato da nessuno. La parte Windows resta su `wip/gpu-swap` (compila, mai provata). Stato e
+  passi in `docs/dev/gpu_swap.md`.
+- **Menu F5, scheda Info**: stato vero dei pacchetti (aperti, texture servite, stadi mancanti, ultimo
+  problema), stringhe inglesi in `lang/en.txt`.
+
+**Prossimo per la sessione locale:** merge di `origin/claude/crimson-desert-handoff-to1i0s` in
+`local/test-in-gioco`; nuovo artifact, `qs_install.exe --check` poi installazione; `qs_gen --stage A,W`;
+riprova Autunno e Inverno (controllare nella scheda Info che compaiano A e W e nessuno stadio
+mancante); tappa 5 (probe, `docs/recon/probe_plan.md`), con gli indirizzi trovati in `targets.ini`
+secondo `docs/dev/appliers.md` (un target alla volta, partendo dall'orologio).
 
 ## Prossimi passi (sessione LOCALE sul PC di Stefano, con i file del gioco)
 1. **Verifica inventario**: `qs_gen.exe --game "<Crimson Desert>" --verify-inventory --report verify.txt`.
