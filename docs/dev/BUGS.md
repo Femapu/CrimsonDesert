@@ -17,3 +17,14 @@ estratti).
 - **Correzione proposta**: rigenerare l'inventario dall'indice attuale (o aggiornare i due offset) e
   far rileggere al generatore l'offset dal `0.pamt` vivo quando il resto della voce coincide, così una
   patch che sposta solo i dati non scarta le voci.
+
+## B2. Normal map nell'inventario con profilo di colore (aperto)
+
+- **Dove**: `data/vegetation_classes_v1.json`, regole di `tools/classify_inventory.py`.
+- **Sintomo**: `leaf_pine_common_b_01_normal.dds` e `leaf_pine_common_b_02_normal.dds` hanno
+  profilo `deciduous` (ruolo colore). Nell'anteprima la ricetta altera la normal map (puntini gialli
+  e chiari in autunno e inverno).
+- **Effetto**: in gioco l'illuminazione di quelle foglie sarebbe sbagliata. Sono le uniche 2 voci con
+  suffisso da mappa non di colore (`_normal`, `_n`, `_sp`, `_mask`, `_height`).
+- **Correzione proposta**: escluderle nel classificatore con una regola sul suffisso, e come rete di
+  sicurezza far rifiutare al generatore le voci il cui nome indica un ruolo non di colore.

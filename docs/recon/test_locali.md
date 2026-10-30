@@ -76,9 +76,35 @@ salta (restano vanilla), quindi non è bloccante, ma l'inventario va aggiornato 
   terreno (prati) della nuova regione; oggi l'inventario include i tile `terrain` del gioco base ma
   non quelli del DLC.
 
-## 2. Anteprime vere
+## 2. Anteprime vere (30/10/2026)
 
-Da fare.
+Campione: 3 texture a caso (seme fisso) per ognuno dei 19 profili, 52 texture distinte, estratte
+con `tools/index_browser.py extract`. Per ognuna `qs_preview --encode --fit --stages 1` con il seme
+dell'asset. Texture, PNG e log restano in `local-out/` (script: `local-out/scripts/sample_previews.py`).
+
+### Tasso di riuscita del fitter
+
+- 52 texture su 52 elaborate, nessun errore di estrazione o di decodifica.
+- **Nessun mip oltre la dimensione originale**: 91 mip ricompressi LZ4 tutti dentro il limite al
+  primo tentativo (`fb=0`, mai servito il fitBias), gli altri sono mip salvati non compressi e
+  rientrano per costruzione. Margine tipico tra il 10% e il 60% sotto la dimensione originale.
+- Tempi: 80-370 ms per mip 1024, circa 1,2 s per il mip0 2048 della `global_colormap`.
+
+### Osservazioni visive (prime 5 anteprime guardate)
+
+- `deciduous` (impostor di betulla): inverno spoglio convincente (rami nudi, foglie tolte con
+  l'alfa), autunno diverso per seme (seme 1 rosso, seme 10 giallo oliva spento). Primavera quasi
+  identica all'estate e fine estate poco distinta: da tarare.
+- `ground_grass` e `terrain_color` (erba del terreno): progressione buona, fine estate paglierina,
+  autunno oliva scuro, inverno grigio slavato.
+- Uno dei 3 tile `terrain_color` è quasi tutto nero già in vanilla (tile fuori mappa o di mare):
+  lavoro e spazio sprecati, da escludere nell'inventario se sono tanti.
+- `grass` con `weed_salvia_03` (salvia viola): nessun cambiamento visibile in nessuna stagione, la
+  ricetta dell'erba non tocca i toni viola. Probabilmente va nel profilo `flower`.
+- Una normal map classificata come colore: vedi BUGS.md, B2.
+
+Taratura di `data/recipes/vegetation.ini`: in attesa del parere di Stefano sulla galleria
+(`local-out/prev/index.html`).
 
 ## 3. Primo pacchetto in gioco
 
