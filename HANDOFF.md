@@ -1,4 +1,4 @@
-# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, sessione cloud)
+# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, fine sessione cloud)
 
 ## Obiettivo
 Mod pubblicabile di stagioni dinamiche per Crimson Desert 2.04 con DLC "Charting the Unknown".
@@ -37,6 +37,32 @@ provato sui file veri o nel gioco: è stato provato su dati sintetici, sotto win
 
 Strumenti Windows (in `build/win/` o nell'artifact della CI): `qs_gen.exe`, `qs_preview.exe`,
 `qs_season.exe`, `qs_lz4exact.exe`.
+
+## Aggiornamento finale (30/10, sera)
+**Provato in gioco (sessione locale, `docs/recon/test_locali.md`):** inventario 3686/3688 OK, DLC senza
+vegetazione propria, fitter 100% (pacchetto A: 2971 texture, 726 MB, 43 s), in gioco circa 5000
+texture servite con 0 errori e senza rallentamenti, autunno ben visibile, menu F5 funzionante anche
+con frame generation XeSS.
+
+**Fatto dopo il test:** B2 corretto (normal map escluse per nome, salvia nel profilo `flower`);
+primavera e fine estate più marcate sulle latifoglie (`data/recipes/vegetation.ini`); installer
+`qs_install.exe` + guide utente (`docs/utente/`) + README + workflow di rilascio sui tag `v*`;
+lista unica delle build note (`src/core/known_builds.h`, usata da plugin e installer); lingua
+dell'interfaccia come il gioco (italiano incluso, inglese da `lang/en.txt`, `[General] Language=`).
+Nota: le ultime modifiche (B2, ricette, known_builds, lingua) hanno solo controlli rapidi: la build
+completa e i test li fa la CI su GitHub, controllare che l'ultima esecuzione sia verde.
+
+**Lavoro interrotto per budget, su branch separati (NON uniti, da completare e verificare):**
+- `wip/pacchetti-per-texture`: pacchetti v2 con regione e seme per texture, più pacchetti aperti,
+  `qs_gen --plan`. Doveva includere anche B1 (offset dal pamt vivo) e B3 (stadio senza pacchetto).
+- `wip/gpu-swap`: nucleo portabile del cambio texture su GPU (impronte, indice, scheduler) + test.
+- `wip/agganci-gioco`: schema `targets.ini`, meteo, orologio, controller con ripristino.
+
+**Bug aperti:** B1 e B3 (`docs/dev/BUGS.md`). Finché B3 non è corretto, generare tutti i pacchetti
+che si vogliono vedere (almeno A e W) o usare il menu in modalità Manuale.
+
+**Prossimo per la sessione locale:** tappa 5 (probe, `docs/recon/probe_plan.md`), poi riprova
+Autunno/Inverno con il nuovo artifact generando sia `A.qsp` sia `W.qsp`.
 
 ## Prossimi passi (sessione LOCALE sul PC di Stefano, con i file del gioco)
 1. **Verifica inventario**: `qs_gen.exe --game "<Crimson Desert>" --verify-inventory --report verify.txt`.
