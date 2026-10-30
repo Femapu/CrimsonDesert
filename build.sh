@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 mkdir -p build build/win
 
 # ---------------------------------------------------------------- module extras
-EXTRA_CORE_FLAGS=""        # e.g. -Ithird_party/<lib>
+EXTRA_CORE_FLAGS="-Ithird_party/rgbcx -Ithird_party/stb -ffp-contract=off"  # texture codec, previews; no FMA contraction (same floats native/mingw)
 EXTRA_WIN_FLAGS=""
 EXTRA_WIN_LIBS=""          # e.g. -ld3dcompiler (prefer runtime loading to keep imports minimal)
 

@@ -47,6 +47,17 @@ public:
     // Must be deterministic and must not change dimensions.
     bool apply(const Context& ctx, const Stage& st, tex::Image& img, std::string* error = nullptr) const;
 
+    // ---- additions (texture + recipes stream) ----
+
+    // Colour-only, strictly pointwise version of apply() (no alpha changes, no spatial effects), for
+    // the recolour fallback of tex::fitMip(): `colours` is a 1-row image of endpoint colours.
+    bool applyPalette(const Context& ctx, const Stage& st, tex::Image& colours, std::string* error = nullptr) const;
+
+    // Profiles defined by the loaded files, and whether a profile changes a given look at all.
+    std::vector<std::string> profiles() const;
+    bool hasProfile(const std::string& profile) const;
+    bool changesLook(const std::string& profile, Look l) const;
+
     struct Impl;
     RecipeBook();
     ~RecipeBook();
@@ -56,5 +67,25 @@ public:
 private:
     Impl* impl_;
 };
+
+// A pure look as a stage (t = 0).
+inline Stage pureStage(Look l) { return Stage{l, l, 0.0f}; }
+
+// Glue for tex::fitMip()'s recolour fallback:
+//   PaletteBinding pb{&book, ctx, stage};
+//   tex::RecolorFallback rf{&paletteThunk, &pb};
+//   tex::fitMip(texture, mip, target, original, size, opts, &rf);
+struct PaletteBinding {
+    const RecipeBook* book = nullptr;
+    Context ctx;
+    Stage stage;
+};
+void paletteThunk(void* binding, tex::Image& colours);
+
+// Seed for a texture as defined in docs/dev/CONTRACTS.md: lookup3(asset, 0xC5EDE).
+uint32_t seedForAsset(const std::string& asset);
+
+// Parses "S", "U", "L", "A", "W" (case-insensitive) or full names ("spring", "autumn"...).
+bool lookFromString(const std::string& s, Look& out);
 
 }  // namespace qs::recipe

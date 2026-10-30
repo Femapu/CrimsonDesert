@@ -50,3 +50,10 @@ devono usare lo stesso seme: `seed = lookup3(asset, 0xC5EDE)`.
   `docs/dev/season_engine.md`). Valori predefiniti cambiati: `realMinutesPerDay` 48 -> 90 (un giorno
   del gioco dura circa 60-120 minuti reali), finestra del giorno vanilla 03:00-19:00 (prima 6-20).
   `update()` accetta `inGameHours < 0` (ore derivate dal giorno).
+- 30/10, flusso texture + ricette: solo AGGIUNTE, nessuna firma esistente cambiata.
+  `texture.h`: `blockBytes`, `surfaceSize`, `mipDim`, `decodeSurface`, `encodeSurface`, `encodeMipRef`,
+  `MipOptions` + `rebuildMips(Texture&, const MipOptions&)`, `downsample`, `alphaCoverage`,
+  `matchAlphaCoverage`, `recolorSurface`, `fitMip` (con `FitResult`, `RecolorFallback`), `lz4BestSize`.
+  `recipe.h`: `RecipeBook::applyPalette`, `profiles`, `hasProfile`, `changesLook`, `pureStage`,
+  `PaletteBinding` + `paletteThunk`, `seedForAsset`, `lookFromString`.
+  Dettagli e uso per il generatore: `docs/dev/texture_recipes.md`.
