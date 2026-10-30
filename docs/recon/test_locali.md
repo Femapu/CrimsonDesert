@@ -139,7 +139,16 @@ Dal log del plugin 0.3.0:
   dopo (limite noto, HANDOFF passo 6).
 - Bug sulla scelta del pacchetto quando quello dello stadio non esiste: vedi BUGS.md, B3.
 
-Osservazioni visive di Stefano: in attesa.
+Osservazioni visive di Stefano:
+
+- Autunno: "era tutto più autunnoso", effetto visibile su vegetazione e terreno.
+- Estate: corretta (gioco originale).
+- Inverno: poco diverso. Spiegazione: `W.qsp` non esiste, quindi per B3 restava attivo il pacchetto
+  A (si vedeva l'autunno, non l'inverno). Da riprovare dopo aver generato `W.qsp`.
+- Personaggio: nessun cambiamento possibile. L'inventario contiene solo `tree/`, `leveldata/`,
+  `object/` (vegetazione e terreno), nessuna texture di `character/`, e nel log non c'è nessuna
+  lettura del pacchetto su `character/`. Luce e meteo per stagione non sono ancora agganciati
+  (probe spenti), quindi anche l'illuminazione del personaggio è quella originale.
 
 ## 4. Menu F5 in gioco
 
