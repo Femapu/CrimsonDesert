@@ -282,8 +282,38 @@ Season engine: %s
 in attesa
 waiting
 
-Pacchetto stagionale
-Season pack
+Pacchetti stagionali
+Season packs
+
+Pacchetti non attivi (controllo di versione fallito o cartella packs assente).
+Packs not active (version check failed or packs folder missing).
+
+Pacchetti aperti: %d (%s)
+Open packs: %d (%s)
+
+nessuno
+none
+
+Texture servite: %u di %u
+Textures served: %u of %u
+
+Texture da uno stadio precedente: %u
+Textures from an earlier stage: %u
+
+Pacchetto fisso: %s
+Fixed pack: %s
+
+vanilla
+vanilla
+
+Stadi mancanti: nessuno
+Missing stages: none
+
+Stadi mancanti: %s (genera i pacchetti con qs_gen)
+Missing stages: %s (generate the packs with qs_gen)
+
+Ultimo problema: %s
+Last problem: %s
 
 I pacchetti si creano sul tuo PC con qs_gen dai file del gioco: nessun asset viene distribuito.
 Packs are created on your PC by qs_gen from the game files: no game assets are distributed.

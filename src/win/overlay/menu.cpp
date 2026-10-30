@@ -19,6 +19,7 @@
 #include <string>
 
 #include "imgui.h"
+#include "../io_hooks.h"
 #include "overlay.h"
 #include "qs_state.h"
 
@@ -758,7 +759,39 @@ void tabInfo(Frame& f) {
     ImGui::Text(tr("Orologio del gioco: %s"), f.clockHooked ? tr("agganciato") : tr("non agganciato"));
     ImGui::Text(tr("Motore stagioni: %s"), f.engineLive ? tr("attivo") : tr("in attesa"));
     ImGui::Dummy(ImVec2(0, S(6)));
-    sectionTitle(tr("Pacchetto stagionale"));
+    sectionTitle(tr("Pacchetti stagionali"));
+    {
+        // packsStatus() copies the plan and the per-pack counters: refresh once a second.
+        static io::PacksStatus ps;
+        static double lastRead = -10.0;
+        double now = ImGui::GetTime();
+        if (now - lastRead >= 1.0) {
+            ps = io::packsStatus();
+            lastRead = now;
+        }
+        if (!ps.started) {
+            ImGui::TextWrapped("%s", tr("Pacchetti non attivi (controllo di versione fallito o cartella packs assente)."));
+        } else {
+            std::string ids;
+            for (const auto& p : ps.open) ids += (ids.empty() ? "" : ", ") + p.stageId;
+            ImGui::Text(tr("Pacchetti aperti: %d (%s)"), int(ps.open.size()), ids.empty() ? tr("nessuno") : ids.c_str());
+            ImGui::Text(tr("Texture servite: %u di %u"), unsigned(ps.texturesServed), unsigned(ps.texturesIndexed));
+            if (ps.texturesFallback)
+                ImGui::Text(tr("Texture da uno stadio precedente: %u"), unsigned(ps.texturesFallback));
+            if (ps.forced)
+                ImGui::Text(tr("Pacchetto fisso: %s"), ps.forcedStage.empty() ? tr("vanilla") : ps.forcedStage.c_str());
+            if (ps.missingNow.empty()) {
+                ImGui::Text("%s", tr("Stadi mancanti: nessuno"));
+            } else {
+                std::string miss;
+                for (const auto& m : ps.missingNow) miss += (miss.empty() ? "" : ", ") + m;
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.70f, 0.35f, 1.0f));
+                ImGui::TextWrapped(tr("Stadi mancanti: %s (genera i pacchetti con qs_gen)"), miss.c_str());
+                ImGui::PopStyleColor();
+            }
+            if (!ps.lastError.empty()) dimText(tr("Ultimo problema: %s"), ps.lastError.c_str());
+        }
+    }
     dimText("%s", tr("I pacchetti si creano sul tuo PC con qs_gen dai file del gioco: nessun asset viene distribuito."));
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("File di log"));
