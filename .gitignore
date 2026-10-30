@@ -19,3 +19,7 @@ __pycache__/
 
 # copie di lavoro degli agenti (worktree locali)
 .claude/worktrees/
+
+# artifact CI scaricato e output dei test locali (sessione locale)
+dist-ci/
+local-out/
