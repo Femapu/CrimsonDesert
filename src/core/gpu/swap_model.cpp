@@ -235,6 +235,14 @@ bool ResidentTracker::tracked(uint64_t res) const {
     return res_.count(res) != 0;
 }
 
+bool ResidentTracker::withTracked(uint64_t res, const std::function<void(const Resident&)>& fn) const {
+    std::lock_guard<std::mutex> lk(m_);
+    auto it = res_.find(res);
+    if (it == res_.end()) return false;
+    fn(it->second);
+    return true;
+}
+
 size_t ResidentTracker::size() const {
     std::lock_guard<std::mutex> lk(m_);
     return res_.size();

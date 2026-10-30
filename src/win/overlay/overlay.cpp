@@ -1216,6 +1216,15 @@ void overlaySetToggleKey(int vk) {
 
 bool overlayActive() { return running() && R.buffersReady; }
 
+ID3D12CommandQueue* overlayAcquireGameQueue() {
+    if (!running()) return nullptr;
+    AcquireSRWLockShared(&g_renderLock);
+    ID3D12CommandQueue* q = R.queue;
+    if (q) q->AddRef();
+    ReleaseSRWLockShared(&g_renderLock);
+    return q;
+}
+
 }  // namespace qs
 
 // Used by tools/overlay_demo to start the overlay before integration wires overlayStart() in main.cpp.

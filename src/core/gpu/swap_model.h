@@ -130,6 +130,10 @@ public:
 
     bool get(uint64_t res, Resident& out) const;
     bool tracked(uint64_t res) const;
+    // Runs fn under the tracker lock if `res` is tracked; returns false otherwise. The D3D12 side takes its
+    // reference on the resource inside fn, so a concurrent destruction callback (onDestroyed, same lock)
+    // cannot free the object between the check and the AddRef.
+    bool withTracked(uint64_t res, const std::function<void(const Resident&)>& fn) const;
     size_t size() const;
     std::vector<uint64_t> resources() const;
 

@@ -291,6 +291,9 @@ static void testTracker() {
     CHECK(tr.get(0xA0, r) && r.texture == 9 && r.content[0] == slotBit(1) && r.content[1] == 0 && r.stateSeen);
     CHECK(tr.onUnknownUpload(0xA0, 0) && !tr.tracked(0xA0));
     CHECK(!tr.onUnknownUpload(0xA0, 0));
+    int calls = 0;
+    CHECK(!tr.withTracked(0xA0, [&](const Resident&) { ++calls; }));
+    CHECK(tr.withTracked(0xB0, [&](const Resident& rr) { calls += rr.mipOffset == 1 ? 10 : 1; }) && calls == 10);
     CHECK(tr.onDestroyed(0xB0) && !tr.onDestroyed(0xB0));
     CHECK(tr.size() == 1 && tr.resources().size() == 1 && tr.resources()[0] == 0xE0);
 }
