@@ -26,6 +26,10 @@ public:
     explicit GuardedMemory(const probe::ModuleInfo& m) : mod_(m) {}
     bool read(uint64_t addr, void* out, size_t n) override;
     bool write(uint64_t addr, const void* in, size_t n, std::string* why) override;
+    // Same checks and readback as write, for a block of up to kMaxBlock bytes (write takes 1..8:
+    // the applier's scalars). Used by the climate maps (512x512 texels, 1 MB).
+    static constexpr size_t kMaxBlock = 16u << 20;
+    bool writeBlock(uint64_t addr, const void* in, size_t n, std::string* why);
 
 private:
     const probe::ModuleInfo& mod_;
