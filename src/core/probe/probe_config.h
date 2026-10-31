@@ -16,7 +16,7 @@
 
 namespace qs::probe {
 
-enum class InstanceMode : uint8_t { None, Capture, Scan, Global };
+enum class InstanceMode : uint8_t { None, Capture, Scan, Global, Provided };
 enum class HookKind : uint8_t { Vtable, MinHook };
 const char* toString(InstanceMode m);
 
@@ -30,7 +30,8 @@ struct ProbeSpec {
     std::string name;  // section name without "probe."
     bool enabled = true;
 
-    // anchor (exactly one of: className, listGlob, signature, rva)
+    // anchor (exactly one of: className, listGlob, signature, rva, provider)
+    std::string provider;    // Provider=climate_manager: an object another module of the plugin already holds
     std::string className;   // "pa::X" or ".?AVX@pa@@"
     std::string listGlob;    // ListClasses=*Weather*: log matching classes only
     std::string signatureText;
@@ -52,7 +53,7 @@ struct ProbeSpec {
     HookKind hook = HookKind::Vtable;
     bool captureRdx = false;           // CaptureArg=rdx (second argument instead of `this`)
     bool logCallers = true;
-    std::vector<int64_t> chain;        // Global: p = *(p + chain[i]) for each element
+    std::vector<int64_t> chain;        // Global / Provided: p = *(p + chain[i]) for each element
     uint32_t scanMaxMB = 65536;        // per full pass
     uint32_t scanSliceMs = 150;        // B4: scan in time slices so other probes keep sampling
     uint32_t scanRegionMaxMB = 1024;   // B4: skip huge regions (GPU/streaming pools), 0 = no limit

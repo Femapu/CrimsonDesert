@@ -20,6 +20,7 @@
 
 #include "imgui.h"
 #include "../apply/climate_win.h"
+#include "../apply/feature_status.h"
 #include "../apply/snow_win.h"
 #include "../apply/weather_win.h"
 #include "../gpu/gpu_swap.h"
@@ -771,11 +772,12 @@ void tabWeather(Frame& f) {
     ImGui::PushItemWidth(colW);
     sectionTitle(tr("Cosa controlla la mod"));
     f.changed |= toggle(tr("Meteo stagionale"), &c.weatherControl, tr("Pesi del meteo per stagione: estati limpide, autunni piovosi, inverni nevosi."));
+    f.changed |= toggle(tr("Fulmini"), &c.lightningControl, tr("Fulmini e tuoni nei temporali: frequenti in estate e autunno, quasi mai in inverno; mai nel deserto."));
     f.changed |= toggle(tr("Temperature stagionali"), &c.climateControl, tr("Estati più calde, inverni freddi; il deserto e i luoghi freddi del gioco restano come sono."));
     f.changed |= toggle(tr("Neve che si accumula"), &c.snowAccumulation, tr("La copertura cresce quando nevica sotto zero e si scioglie sopra zero."));
-    f.changed |= toggle(tr("Luce stagionale"), &c.lightControl, tr("Sole più basso e toni freddi in inverno, più caldi in autunno."));
-    f.changed |= toggle(tr("Durata del giorno"), &c.dayLengthControl, tr("Giornate più corte in inverno, più lunghe in estate."));
-    f.changed |= toggle(tr("Particelle"), &c.particles, tr("Foglie che cadono in autunno, fiato visibile al freddo."));
+    f.changed |= toggle(tr("Luce stagionale"), &c.lightControl, tr("Colore e intensità di sole, ambiente, nebbia e cielo per stagione."));
+    f.changed |= toggle(tr("Durata del giorno"), &c.dayLengthControl, tr("Alba e tramonto seguono la stagione; l'orologio del gioco non cambia velocità."));
+    f.changed |= toggle(tr("Particelle"), &c.particles, tr("Foglie che cadono in autunno, pollini in primavera, fiocchi più fitti in inverno."));
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Regolazioni"));
     ImGui::BeginDisabled(!c.snowAccumulation);
@@ -862,6 +864,22 @@ void tabInfo(Frame& f) {
         const ClimateInfo& ci = climateInfo();
         ImGui::Text(tr("Temperature stagionali: %s"), climateStateIt(ci));
         if (ci.state == ClimateModState::Disabled && !ci.reason.empty()) dimText(tr("Motivo: %s"), ci.reason.c_str());
+        // after-compose features (lightning, lighting, daylength, particles): src/win/apply/feature_status.h
+        static std::vector<FeatureStatus> fl;
+        static double lastFl = -10.0;
+        if (ImGui::GetTime() - lastFl >= 1.0) {
+            fl = featureList();
+            lastFl = ImGui::GetTime();
+        }
+        for (const FeatureStatus& fs : fl) {
+            const char* st = fs.state == FeatureState::Active ? tr("attivo")
+                             : fs.state == FeatureState::Off ? tr("spento")
+                             : fs.state == FeatureState::Waiting ? tr("in attesa")
+                                                                  : tr("disattivato");
+            ImGui::Text("%s: %s", tr(fs.label.c_str()), st);
+            if (!fs.reason.empty()) dimText(tr("Motivo: %s"), fs.reason.c_str());
+            if (!fs.detail.empty()) dimText("%s", fs.detail.c_str());
+        }
     }
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Neve d'inverno"));

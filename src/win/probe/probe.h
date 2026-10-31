@@ -16,6 +16,7 @@
 //     qs::io::uninstall() (io_hooks disables all MinHook hooks and uninitialises MinHook).
 //     Never call it at process exit.
 #pragma once
+#include <cstdint>
 #include <string>
 
 namespace qs {
@@ -25,5 +26,11 @@ void probeStop();   // stops the thread (bounded wait), restores every hook, clo
 
 // Same with explicit paths (tests, tools).
 bool probeStartWith(const std::wstring& iniPath, const std::wstring& logPath);
+
+// Objects other modules hold, for Instance=provided probes (Provider=<name>). The weather module
+// registers "climate_manager". Thread safe; fn returns 0 while it has nothing.
+typedef uintptr_t (*ProbeProviderFn)();
+void probeSetProvider(const char* name, ProbeProviderFn fn);
+uintptr_t probeProviderValue(const std::string& name);
 
 }  // namespace qs

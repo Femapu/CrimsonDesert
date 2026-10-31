@@ -132,6 +132,7 @@ const BoolField kBools[] = {
     {"WeatherControl", &SeasonConfig::weatherControl},     {"SnowAccumulation", &SeasonConfig::snowAccumulation},
     {"LightControl", &SeasonConfig::lightControl},         {"DayLengthControl", &SeasonConfig::dayLengthControl},
     {"Particles", &SeasonConfig::particles},               {"ClimateControl", &SeasonConfig::climateControl},
+    {"LightningControl", &SeasonConfig::lightningControl},
 };
 
 }  // namespace
@@ -314,6 +315,7 @@ std::string SeasonConfig::save() const {
     kv("DayLengthControl", b(dayLengthControl), "giornate più corte in inverno");
     kv("Particles", b(particles), "foglie che cadono, fiato visibile");
     kv("ClimateControl", b(climateControl), "temperature stagionali nella mappa del clima");
+    kv("LightningControl", b(lightningControl), "fulmini nei temporali, per stagione");
     line("; Velocità della neve, frazione di copertura per ora di gioco (0 .. 5).");
     kv("SnowAccumPerHour", fmt(snowAccumPerHour), "quando nevica sotto zero");
     kv("SnowMeltPerHour", fmt(snowMeltPerHour), "a +3 gradi (più veloce se fa più caldo)");

@@ -186,20 +186,20 @@ Snow cover grows when it snows below zero and melts above zero.
 Luce stagionale
 Seasonal light
 
-Sole più basso e toni freddi in inverno, più caldi in autunno.
-Lower sun and cold tones in winter, warmer in autumn.
+Colore e intensità di sole, ambiente, nebbia e cielo per stagione.
+Season colour and strength of sun, ambient light, fog and sky.
 
 Durata del giorno
 Day length
 
-Giornate più corte in inverno, più lunghe in estate.
-Shorter days in winter, longer in summer.
+Alba e tramonto seguono la stagione; l'orologio del gioco non cambia velocità.
+Sunrise and sunset follow the season; the game's clock keeps its speed.
 
 Particelle
 Particles
 
-Foglie che cadono in autunno, fiato visibile al freddo.
-Falling leaves in autumn, visible breath in the cold.
+Foglie che cadono in autunno, pollini in primavera, fiocchi più fitti in inverno.
+Falling leaves in autumn, pollen in spring, denser snowflakes in winter.
 
 Regolazioni
 Tuning
@@ -573,3 +573,9 @@ State: %s
 
 in attesa della coda del gioco
 waiting for the game queue
+
+Fulmini
+Lightning
+
+Fulmini e tuoni nei temporali: frequenti in estate e autunno, quasi mai in inverno; mai nel deserto.
+Lightning and thunder in storms: frequent in summer and autumn, hardly ever in winter; never in the desert.

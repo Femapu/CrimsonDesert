@@ -288,6 +288,21 @@ static void testConfig() {
     CHECK(!parseProbeConfigText("[probe.x]\nClass=a\n", c2, errors));
     CHECK(parseProbeConfigText("[General]\n", c2, errors) && !c2.enabled && !c2.allowHooks);
 
+    // Instance=provided (climate manager held by the weather module)
+    ProbeConfig c3;
+    errors.clear();
+    CHECK(parseProbeConfigText("[General]\n[probe.atm]\nProvider=climate_manager\nInstance=provided\nChain=0x60,0x28\nDump=0:0x200\nStats=1\n"
+                               "[probe.bad1]\nProvider=climate_manager\nInstance=global\n"
+                               "[probe.bad2]\nProvider=nothing\nInstance=provided\n"
+                               "[probe.bad3]\nProvider=climate_manager\nClass=a\nInstance=provided\n",
+                               c3, errors));
+    CHECK(c3.probes.size() == 1 && errors.size() == 3);
+    if (!c3.probes.empty()) {
+        CHECK(c3.probes[0].instance == InstanceMode::Provided && c3.probes[0].provider == "climate_manager");
+        CHECK(c3.probes[0].chain.size() == 2 && c3.probes[0].chain[1] == 0x28 && c3.probes[0].dumpSize == 0x200);
+        CHECK(std::string(toString(c3.probes[0].instance)) == "provided");
+    }
+
     std::vector<int64_t> l;
     CHECK(parseIntList("0x10, -8,3", l) && l.size() == 3 && l[1] == -8);
     CHECK(!parseIntList("0x10,zz", l));
