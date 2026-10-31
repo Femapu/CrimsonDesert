@@ -33,9 +33,9 @@ constexpr float kSnowStartVanilla = -5.0f, kSnowFullVanilla = -20.0f;
 
 struct SnowConfig {
     bool enabled = true;           // [Snow] Enabled
-    float winterStart = 2.0f;      // WinterSnowStart: SnowStart at full winter intensity (C)
-    float winterFull = -6.0f;      // WinterSnowFull: SnowFull at full winter intensity (C)
-    float maxStart = 4.0f;         // MaxSnowStart: safety cap (no snow in the desert), hard limit 10
+    float winterStart = 10.0f;     // WinterSnowStart: SnowStart at full winter intensity (C)
+    float winterFull = 0.0f;       // WinterSnowFull: SnowFull at full winter intensity (C)
+    float maxStart = 10.0f;        // MaxSnowStart: safety cap (no snow in the desert), hard limit 10
     float maxRate = 0.5f;          // MaxRate: max change per real second (C), 0 = unlimited
     uint32_t startDelayMs = 20000; // StartDelayMs: wait before touching the game
     // Effective winter values after the caps: start <= maxStart, full <= start - 1, both in range.

@@ -395,3 +395,90 @@ Reason: %s
 
 Si spegne con "Neve che si accumula" (scheda Meteo e luce).
 Switched off with "Snow that builds up" (Weather and light tab).
+
+Meteo nel gioco
+Weather in the game
+
+Stato: %s
+Status: %s
+
+Meteo del gioco (HUD): %s
+Game weather (HUD): %s
+
+Obiettivo della stagione: %s
+Season's target: %s
+
+ancora %.1f ore di gioco
+%.1f game hours left
+
+Obiettivo della stagione: in attesa dell'orologio del gioco
+Season's target: waiting for the game's clock
+
+Deserto: %s (massima del giorno %.0f °C)
+Desert: %s (day top %.0f °C)
+
+sì
+yes
+
+no
+no
+
+Temporali: pioggia forte, i fulmini non sono ancora controllati.
+Storms: heavy rain, lightning is not controlled yet.
+
+Meteo stagionale: %s
+Seasonal weather: %s
+
+non avviato
+not started
+
+attivo (deserto: meteo del gioco)
+active (desert: the game's weather)
+
+spento
+off
+
+disattivato
+disabled
+
+non ancora noto
+not known yet
+
+piovoso
+rainy
+
+nevoso
+snowy
+
+ventoso
+windy
+
+nebbia
+fog
+
+nuvoloso
+cloudy
+
+sereno
+clear
+
+tempesta
+storm
+
+meteo del gioco
+the game's weather
+
+coperto
+overcast
+
+pioggia
+rain
+
+neve
+snow
+
+bufera di neve
+blizzard
+
+temporale
+thunderstorm

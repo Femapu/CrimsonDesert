@@ -73,8 +73,8 @@ static void testConfig() {
     c.load(ini, w);
     CHECK(w.empty());
     CHECK(c.enabled);
-    CHECK(near(c.effectiveStart(), 2.0));
-    CHECK(near(c.effectiveFull(), -6.0));
+    CHECK(near(c.effectiveStart(), 10.0));
+    CHECK(near(c.effectiveFull(), 0.0));
 
     SnowConfig d;
     w.clear();
@@ -98,7 +98,7 @@ static void testConfig() {
     w.clear();
     ini.parse(snowIniTemplate());
     t.load(ini, w);
-    CHECK(w.empty() && t.enabled && near(t.winterStart, 2) && near(t.winterFull, -6) && near(t.maxStart, 4));
+    CHECK(w.empty() && t.enabled && near(t.winterStart, 10) && near(t.winterFull, 0) && near(t.maxStart, 10));
 }
 
 static void testShippedIni() {
@@ -162,8 +162,8 @@ static void testIntensity() {
     SnowThresholds o{-5, -20};
     SnowThresholds t0 = snowTargets(o, c, 0.0f), t1 = snowTargets(o, c, 1.0f), th = snowTargets(o, c, 0.5f);
     CHECK(t0.start == -5.0f && t0.full == -20.0f);  // exactly the originals outside winter
-    CHECK(near(t1.start, 2) && near(t1.full, -6));
-    CHECK(near(th.start, -1.5) && near(th.full, -13));
+    CHECK(near(t1.start, 10) && near(t1.full, 0));
+    CHECK(near(th.start, 2.5) && near(th.full, -10));
 }
 
 static void testAttach() {
@@ -231,8 +231,8 @@ static void testRamp() {
     }
     CHECK(smoothOk);
     CHECK(orderOk);
-    CHECK(near(g.mem.getF(g.s.value), 2.0));
-    CHECK(near(g.mem.getF(g.f.value), -6.0));
+    CHECK(near(g.mem.getF(g.s.value), 10.0));
+    CHECK(near(g.mem.getF(g.f.value), 0.0));
     CHECK(c.status().state == SnowState::Active);
     // the log is throttled: far fewer lines than ticks
     std::vector<std::string> lines = c.takeLog();

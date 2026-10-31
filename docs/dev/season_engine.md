@@ -49,7 +49,7 @@ dedotto, da confermare in gioco). Con i valori vanilla nessuna zona è abbastanz
   A>W, vale 1 in inverno, scende nella prima metà della coda W>S, 0 altrove (smoothstep, continua).
 - Valori scritti = originali + intensità x (valori d'inverno - originali); intensità 0 = originali
   esatti. Velocità massima `MaxRate` (0,5 gradi al secondo reale): mai salti a metà frame.
-- Default `[Snow]`: `WinterSnowStart=2`, `WinterSnowFull=-6`, `MaxSnowStart=4` (limite di sicurezza,
+- Default `[Snow]`: `WinterSnowStart=10`, `WinterSnowFull=0`, `MaxSnowStart=10` (limite di sicurezza,
   massimo assoluto 10), `SnowFull` sempre almeno 1 grado sotto `SnowStart`. Il deserto resta senza
   neve perché la sua temperatura di clima è molto sopra qualunque soglia ammessa.
 - Sicurezze: exe in `known_builds.h` e controllo di versione riuscito, firma univoca, classe RTTI
@@ -59,14 +59,27 @@ dedotto, da confermare in gioco). Con i valori vanilla nessuna zona è abbastanz
 - Log: `snow: SnowStart found ... class ...`, `snow: attached, originals ...`, `snow: SnowStart a -> b,
   SnowFull c -> d (...), Inverno 30%, winter intensity 1.00` (al massimo ogni 60 s), `snow: DISABLED: ...`.
 
-## Obiettivi meteo di Stefano (prossima tappa)
-Da realizzare con pesi in `[Weather]` / tabella per fase, tutte le probabilità regolabili da ini:
-- Primavera: soprattutto sole, poca pioggia.
-- Estate: poca pioggia, ma temporali estivi.
-- Fine estate: poca pioggia, qualche temporale.
-- Autunno: pioggia forte frequente E temporali.
-- Inverno: precipitazioni come neve solo dove fa freddo, mai nel deserto.
-- Niente neve fuori dall'inverno.
+## Meteo stagionale (`[Weather]`, src/core/apply/weather.*, src/win/apply/weather_win.*)
+Porting adattato del meteo di Seasons of Pywel (Khione95, con il suo permesso scritto): stessi punti
+di aggancio e stessi campi, guidato dal nostro motore stagioni e dalle regole di Stefano.
+- **Aggancio**: firme uniche (verificate sugli exe 0x6AE387F2 e 0x6AE46DD0) dell'update del
+  climate manager (compone i livelli meteo) e della query meteo dell'HUD, via `GuardedMinHook`.
+  Dopo la composizione del gioco: WeatherConstant `[[mgr+0x60]+0x20]` (+0x12C precipitazione,
+  +0x130 nuvolosità, +0x134 umidità, +0x16C neve, +0x170 pioggia) e atmosfera `[[mgr+0x60]+0x28]`
+  +0xAC (copertura nuvolosa del cielo), scritte con `GuardedMemory`. Nulla da ripristinare: il gioco
+  ricompone ogni tick, basta smettere di scrivere.
+- **Periodi**: tipo (gioco, sereno, nuvoloso, coperto, pioggia, temporale), intensità e durata in
+  ore di gioco, tirati dai pesi della fase (`<Fase>.Weights`); nella coda di transizione entrano le
+  regole della fase dopo. L'orologio è l'ora del gioco (`[mgr+0x100]`, virtuale +0x100): dormire o
+  aspettare fa avanzare i periodi. Livelli sfumati a `RampPerHour`.
+- **Inverno**: pioggia e pioggia del gioco diventano neve (stessa rampa `winterIntensity` dei cvar
+  della neve); cielo coperto o nuvoloso prevalente. Fuori dall'inverno la mod non crea mai neve.
+- **Deserto**: mappa del clima CPU del climate manager (512x512, 80 m, byte alto = massima del
+  giorno); se un texel entro `DesertRadius` ha massima >= `DesertTopTempC` il meteo torna al gioco in
+  `DesertFadeSec`. Mappa non trovata: modulo spento (mai scrivere senza sapere se è deserto).
+- **Temporali**: il flag Storm dell'HUD (bit 6) esiste, ma nessun campo noto guida i fulmini: il
+  temporale è il livello di pioggia più forte con cielo chiuso; il log lo dice.
+- Log: `weather: spell ...`, `weather: HUD ...`, riepilogo ogni `LogIntervalSec`, `weather: DISABLED: ...`.
 
 ## Come lo usa il plugin (ogni frame o ogni ~0,5 s)
 ```cpp

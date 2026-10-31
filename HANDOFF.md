@@ -144,3 +144,17 @@ Stefano ha condiviso le note di ricerca di Seasons 1.0.5 (porting sulla build 6A
 - Temperature: la mappa del clima in memoria (PAClimateTexture, 512x512, canale B = temperatura massima del giorno) si può scrivere dal vivo: temperatura e neve profonda cambiano subito. Serve un limite minimo per le notti (il freddo sotto circa -40 ferisce).
 - Il controllo dell'indice del gioco hasha il pamt dal byte 12 (hashlittle 0xC5EDE); papgt ora firmato: mai toccarlo (coerente con il nostro design).
 Prossimo passo meteo: probe che legge [[mgr+0x60]+0x20] +0xAC/+0x16C/+0x170 durante pioggia/temporale (verifica), poi applier "dopo la composizione" con le regole di Stefano per stagione e il cielo coperto d'inverno; poi temperature stagionali sulla mappa del clima (deserto escluso).
+
+## Branch `claude/meteo` (31/10): meteo stagionale
+- Porting adattato del meteo di Seasons of Pywel (permesso scritto di Khione95): `src/core/apply/weather.*`
+  (regole, periodi, composizione, test `tests/test_weather.cpp`) e `src/win/apply/weather_win.*` (hook
+  update climate manager + query HUD per firma unica, scrittura dopo la composizione, deserto dalla mappa
+  del clima CPU). Menu F5: scheda Meteo e luce, blocco "Meteo nel gioco"; riga in Info. Dettagli in
+  `docs/dev/season_engine.md`.
+- Default neve: WinterSnowStart=10, WinterSnowFull=0, MaxSnowStart=10 (testati in gioco).
+- ATTENZIONE build: il 31/10 l'exe sul PC di Stefano era 0x6AE46DD0 (332.786.072 byte) con
+  meta/0.paver 2.04.02: aggiunti a `known_builds.h` (prima la mod si sarebbe spenta da sola). Le firme
+  meteo e neve sono uniche su 0x6AE387F2 e 0x6AE46DD0. Dopo una patch: rifare la verifica.
+- Da testare in gioco: vedi INSTALL.txt della consegna (collana della pioggia, F5, righe `weather:` del log).
+  Temporali: per ora pioggia fortissima, fulmini non controllati. Deserto: soglia `DesertTopTempC=28`
+  da verificare (anche la valle di Tashkalp, terra normale dentro il deserto).

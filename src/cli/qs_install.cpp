@@ -626,9 +626,13 @@ void checkGameVersion(Report& r) {
     }
     std::string paver;
     fs::path pv = childI(childI(st.game, "meta"), "0.paver");
-    std::vector<uint8_t> want;
-    qs::parseHex(qs::builds::kPaverHex, want);
-    st.paverOk = readFile(pv, paver) && paver == std::string(want.begin(), want.end());
+    st.paverOk = false;
+    if (readFile(pv, paver))
+        for (const char* hx : qs::builds::kPaverHexes) {
+            std::vector<uint8_t> want;
+            qs::parseHex(hx, want);
+            st.paverOk |= paver == std::string(want.begin(), want.end());
+        }
     if (st.paverOk) r.add(Lv::Ok, std::string("meta\\0.paver corrisponde alla versione ") + qs::builds::kGameVersion);
     else
         r.add(Lv::Warn, "meta\\0.paver diverso da " + std::string(qs::builds::kGameVersion) + " (" + (paver.empty() ? "illeggibile" : hexOf(paver)) + ")",

@@ -330,9 +330,16 @@ SetupResult runSetup(const Config& cfg, const std::wstring& scriptsDir) {
     QS_INFO("host exe : %s", narrow(exe).c_str());
 
     // ---- 1. version file ---------------------------------------------------------------------
-    std::vector<uint8_t> paver, want;
-    parseHex(kPaver204Hex, want);
-    bool paverOk = readWholeFile(joinPath(r.gameRoot, L"meta\\0.paver"), paver) && paver == want;
+    std::vector<uint8_t> paver;
+    bool paverOk = readWholeFile(joinPath(r.gameRoot, L"meta\\0.paver"), paver);
+    if (paverOk) {
+        paverOk = false;
+        for (const char* hx : builds::kPaverHexes) {
+            std::vector<uint8_t> want;
+            parseHex(hx, want);
+            paverOk |= paver == want;
+        }
+    }
     std::string paverHex;
     for (uint8_t b : paver) { static const char* hx = "0123456789abcdef"; paverHex += hx[b >> 4]; paverHex += hx[b & 15]; }
     QS_INFO("version check: meta/0.paver %s (%s, expected %s = %s)", paverOk ? "OK" : "MISMATCH",

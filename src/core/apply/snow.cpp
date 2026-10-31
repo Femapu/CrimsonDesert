@@ -32,13 +32,13 @@ constexpr float kEps = 1e-4f;
 }  // namespace
 
 float SnowConfig::effectiveStart() const {
-    float cap = clampf(std::isfinite(maxStart) ? maxStart : 4.0f, kSnowMinC + 1.0f, kSnowHardMaxStart);
-    float s = std::isfinite(winterStart) ? winterStart : 2.0f;
+    float cap = clampf(std::isfinite(maxStart) ? maxStart : 10.0f, kSnowMinC + 1.0f, kSnowHardMaxStart);
+    float s = std::isfinite(winterStart) ? winterStart : 10.0f;
     return clampf(s, kSnowMinC + 1.0f, cap);
 }
 
 float SnowConfig::effectiveFull() const {
-    float f = std::isfinite(winterFull) ? winterFull : -6.0f;
+    float f = std::isfinite(winterFull) ? winterFull : 0.0f;
     return clampf(f, kSnowMinC, effectiveStart() - 1.0f);
 }
 
@@ -73,10 +73,10 @@ std::string snowIniTemplate() {
            "; temperatura è molto più alta di qualunque soglia ammessa (MaxSnowStart).\n"
            "; Si spegne anche dal menu F5 (Meteo e luce, \"Neve che si accumula\").\n"
            "Enabled=1\n"
-           "WinterSnowStart=2.0\n"
-           "WinterSnowFull=-6.0\n"
+           "WinterSnowStart=10.0\n"
+           "WinterSnowFull=0.0\n"
            "; limite di sicurezza per WinterSnowStart (massimo assoluto 10)\n"
-           "MaxSnowStart=4.0\n"
+           "MaxSnowStart=10.0\n"
            "; variazione massima in gradi al secondo reale\n"
            "MaxRate=0.5\n"
            "StartDelayMs=20000\n";

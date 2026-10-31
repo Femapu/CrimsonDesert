@@ -20,6 +20,7 @@
 
 #include "imgui.h"
 #include "../apply/snow_win.h"
+#include "../apply/weather_win.h"
 #include "../io_hooks.h"
 #include "overlay.h"
 #include "qs_state.h"
@@ -673,6 +674,55 @@ void tabRegions(Frame& f) {
     }
 }
 
+// Seasonal weather (src/win/apply/weather_win.h): a copy refreshed twice a second.
+const WeatherInfo& weatherInfo() {
+    static WeatherInfo wi;
+    static double last = -10.0;
+    double now = ImGui::GetTime();
+    if (now - last >= 0.5) {
+        last = now;
+        if (!weatherGetInfo(wi)) wi = WeatherInfo();
+    }
+    return wi;
+}
+
+const char* hudNameIt(int64_t flags) {
+    static const char* const n[7] = {"piovoso", "nevoso", "ventoso", "nebbia", "nuvoloso", "sereno", "tempesta"};
+    int i = flags < 0 ? -1 : apply::hudWeatherIndex(uint32_t(flags));
+    return i < 0 ? tr("non ancora noto") : tr(n[i]);
+}
+
+const char* weatherStateIt(const WeatherInfo& wi) {
+    if (!wi.started) return tr("non avviato");
+    switch (wi.state) {
+        case WeatherModState::Waiting: return tr("in avvio");
+        case WeatherModState::Active: return wi.desert ? tr("attivo (deserto: meteo del gioco)") : tr("attivo");
+        case WeatherModState::Off: return tr("spento");
+        case WeatherModState::Disabled: return tr("disattivato");
+    }
+    return "?";
+}
+
+void weatherLive() {
+    const WeatherInfo& wi = weatherInfo();
+    sectionTitle(tr("Meteo nel gioco"));
+    ImGui::Text(tr("Stato: %s"), weatherStateIt(wi));
+    if (!wi.reason.empty() && wi.state == WeatherModState::Disabled) dimText(tr("Motivo: %s"), wi.reason.c_str());
+    ImGui::Text(tr("Meteo del gioco (HUD): %s"), wi.hudHooked ? hudNameIt(wi.hudFlags) : tr("non agganciato"));
+    if (wi.hasSpell) {
+        ImGui::Text(tr("Obiettivo della stagione: %s"), tr(apply::weatherKindIt(wi.spell.kind, wi.snowing)));
+        if (wi.spell.intensity > 0) {
+            ImGui::SameLine();
+            ImGui::Text("%.0f%%", wi.spell.intensity * 100.0f);
+        }
+        dimText(tr("ancora %.1f ore di gioco"), wi.hoursLeft);
+    } else {
+        dimText("%s", tr("Obiettivo della stagione: in attesa dell'orologio del gioco"));
+    }
+    if (wi.mapFound) dimText(tr("Deserto: %s (massima del giorno %.0f °C)"), wi.desert ? tr("sì") : tr("no"), wi.hottestC);
+    if (wi.spell.kind == apply::WeatherKind::Storm) dimText("%s", tr("Temporali: pioggia forte, i fulmini non sono ancora controllati."));
+}
+
 void tabWeather(Frame& f) {
     SeasonConfig& c = f.cfg;
     float colW = ImGui::GetContentRegionAvail().x * 0.47f;
@@ -694,6 +744,8 @@ void tabWeather(Frame& f) {
     f.changed |= ImGui::SliderFloat("##lat", &c.virtualLatitudeDeg, 0.0f, 70.0f, tr("latitudine virtuale %.0f gradi"), ImGuiSliderFlags_AlwaysClamp);
     ImGui::EndDisabled();
     ImGui::PopItemWidth();
+    ImGui::Dummy(ImVec2(0, S(6)));
+    weatherLive();
     ImGui::EndGroup();
 
     ImGui::SameLine(0, S(28));
@@ -759,6 +811,11 @@ void tabInfo(Frame& f) {
     ImGui::Text(tr("Overlay: %s"), overlayActive() ? tr("attivo") : tr("non agganciato"));
     ImGui::Text(tr("Orologio del gioco: %s"), f.clockHooked ? tr("agganciato") : tr("non agganciato"));
     ImGui::Text(tr("Motore stagioni: %s"), f.engineLive ? tr("attivo") : tr("in attesa"));
+    {
+        const WeatherInfo& wi = weatherInfo();
+        ImGui::Text(tr("Meteo stagionale: %s"), weatherStateIt(wi));
+        if (wi.state == WeatherModState::Disabled && !wi.reason.empty()) dimText(tr("Motivo: %s"), wi.reason.c_str());
+    }
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Neve d'inverno"));
     {
