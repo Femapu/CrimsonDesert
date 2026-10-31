@@ -25,6 +25,7 @@
 #include "../apply/weather_win.h"
 #include "../gpu/gpu_swap.h"
 #include "../io_hooks.h"
+#include "../world_pos.h"
 #include "overlay.h"
 #include "qs_state.h"
 
@@ -880,6 +881,38 @@ void tabInfo(Frame& f) {
             if (!fs.reason.empty()) dimText(tr("Motivo: %s"), fs.reason.c_str());
             if (!fs.detail.empty()) dimText("%s", fs.detail.c_str());
         }
+    }
+    ImGui::Dummy(ImVec2(0, S(6)));
+    sectionTitle(tr("Posizione e area DLC"));
+    {
+        // camera position and the DLC area exclusion: src/win/world_pos.h
+        const WorldPosInfo wp = worldPosInfo();
+        if (wp.known)
+            ImGui::Text(tr("Posizione: X %.0f  Z %.0f  (Y %.0f, probabile)"), wp.x, wp.z, wp.y);
+        else
+            ImGui::Text("%s", tr("Posizione: non ancora nota"));
+        const char* area = wp.area == WorldArea::Dlc ? tr("area DLC (stagioni sospese)")
+                           : wp.area == WorldArea::Base ? tr("gioco base")
+                                                        : tr("sconosciuta");
+        ImGui::Text(tr("Area: %s"), area);
+        if (!wp.enabled)
+            dimText("%s", tr("Esclusione dell'area DLC spenta ([DLCArea] Enabled=0)."));
+        else if (!wp.exclusionActive)
+            dimText("%s", tr("Confine dell'area DLC non ancora impostato ([DLCArea] Points): nessuna esclusione."));
+        else
+            dimText(tr("Confine dell'area DLC: %d punti"), wp.points);
+        static std::string markMsg;
+        static double markTime = -10.0;
+        ImGui::BeginDisabled(!wp.known);
+        if (ImGui::Button(tr("Segna punto confine DLC"))) {
+            std::string msg;
+            const bool ok = worldPosMarkBorder(msg);
+            markMsg = ok ? (tr("Salvato in dlc_border.txt: ") + msg) : (tr("Punto non salvato: ") + msg);
+            markTime = ImGui::GetTime();
+        }
+        ImGui::EndDisabled();
+        if (ImGui::GetTime() - markTime < 4.0) dimText("%s", markMsg.c_str());
+        else if (wp.marked > 0) dimText(tr("Punti segnati in questa sessione: %d"), wp.marked);
     }
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Neve d'inverno"));

@@ -628,3 +628,46 @@ cannot create the light thread
 # Seasonal particles (Info tab, src/win/apply/particles_win.cpp)
 Particelle stagionali
 Seasonal particles
+
+# Position and DLC area (Info tab, src/win/world_pos.cpp)
+Posizione e area DLC
+Position and DLC area
+
+Posizione: X %.0f  Z %.0f  (Y %.0f, probabile)
+Position: X %.0f  Z %.0f  (Y %.0f, probable)
+
+Posizione: non ancora nota
+Position: not known yet
+
+area DLC (stagioni sospese)
+DLC area (seasons paused)
+
+gioco base
+base game
+
+sconosciuta
+unknown
+
+Area: %s
+Area: %s
+
+Esclusione dell'area DLC spenta ([DLCArea] Enabled=0).
+DLC area exclusion off ([DLCArea] Enabled=0).
+
+Confine dell'area DLC non ancora impostato ([DLCArea] Points): nessuna esclusione.
+DLC area border not set yet ([DLCArea] Points): nothing excluded.
+
+Confine dell'area DLC: %d punti
+DLC area border: %d points
+
+Segna punto confine DLC
+Mark DLC border point
+
+Salvato in dlc_border.txt: 
+Saved to dlc_border.txt: 
+
+Punto non salvato: 
+Point not saved: 
+
+Punti segnati in questa sessione: %d
+Points marked in this session: %d
