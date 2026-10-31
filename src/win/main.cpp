@@ -15,6 +15,7 @@
 
 #include "apply/apply.h"
 #include "apply/climate_win.h"
+#include "apply/particles_win.h"
 #include "apply/daylength_win.h"
 #include "apply/lighting_win.h"
 #include "apply/lightning_win.h"
@@ -38,7 +39,7 @@ const char* const kVersion = "0.4.0 (season engine, packs, F5 menu, probes, wint
 HMODULE g_self = nullptr;
 volatile LONG g_initDone = 0;
 bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false, g_applyStarted = false,
-     g_snowStarted = false, g_weatherStarted = false, g_climateStarted = false, g_lightningStarted = false, g_lightingStarted = false, g_daylengthStarted = false, g_gpuStarted = false;
+     g_snowStarted = false, g_weatherStarted = false, g_climateStarted = false, g_lightningStarted = false, g_lightingStarted = false, g_daylengthStarted = false, g_particlesStarted = false, g_gpuStarted = false;
 
 // [GpuSwap]: every key optional (an old ini without the section gets the defaults).
 bool startGpuSwap(const std::wstring& scriptsDir, const std::wstring& gameRoot, const qs::Config& cfg, bool packs,
@@ -121,13 +122,14 @@ void initialize() {
         g_lightningStarted = qs::lightningStart(scriptsDir, setup.versionOk);  // [Lightning]: storms' lightning (after the weather)
         g_lightingStarted = qs::lightingStart(scriptsDir, setup.versionOk);  // [Lighting] + targets.ini [lighting]
         g_daylengthStarted = qs::daylengthStart(scriptsDir, setup.versionOk);  // [DayLength]: seasonal sunrise and sunset
+        g_particlesStarted = qs::particlesStart(scriptsDir, setup.versionOk);  // [Particles]: winter flakes, leaves, pollen
         g_climateStarted = qs::climateStart(scriptsDir, setup.versionOk);  // [Climate]: seasonal temperatures
         g_gpuStarted = startGpuSwap(scriptsDir, setup.gameRoot, cfg, packs, g_overlayStarted);  // [GpuSwap]
         QueryPerformanceCounter(&t1);
-        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s, lightning %s, lighting %s, day length %s, climate %s, gpu swap %s",
+        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s, lightning %s, lighting %s, day length %s, particles %s, climate %s, gpu swap %s",
                 double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart), hooked ? "on" : "off",
                 packs ? "on" : "off", g_seasonStarted ? "on" : "off", g_overlayStarted ? "on" : "off",
-                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off", g_lightningStarted ? "on" : "off", g_lightingStarted ? "on" : "off", g_daylengthStarted ? "on" : "off", g_climateStarted ? "on" : "off", g_gpuStarted ? "on" : "off");
+                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off", g_lightningStarted ? "on" : "off", g_lightingStarted ? "on" : "off", g_daylengthStarted ? "on" : "off", g_particlesStarted ? "on" : "off", g_climateStarted ? "on" : "off", g_gpuStarted ? "on" : "off");
         qs::log::flush();
     } catch (...) {
         QS_ERR("unexpected exception during startup: plugin inactive");
@@ -167,6 +169,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
                 if (g_lightningStarted) qs::lightningStop();  // before the weather: leaves its after-compose callbacks
                 if (g_lightingStarted) qs::lightingStop();  // stops writing (the game recomposes every tick)
                 if (g_daylengthStarted) qs::daylengthStop();  // stops writing the sun, saves the sun table
+                if (g_particlesStarted) qs::particlesStop();  // stops writing (the game recomposes every tick)
                 if (g_weatherStarted) qs::weatherStop();  // stops writing, unhooks
                 if (g_snowStarted) qs::snowStop();        // restores SnowStart/SnowFull
                 if (g_applyStarted) qs::applyStop();      // restores originals, before probeStop

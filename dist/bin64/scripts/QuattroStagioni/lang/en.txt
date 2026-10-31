@@ -624,3 +624,7 @@ no free slot after the weather compose
 
 impossibile creare il thread della luce
 cannot create the light thread
+
+# Seasonal particles (Info tab, src/win/apply/particles_win.cpp)
+Particelle stagionali
+Seasonal particles
