@@ -35,7 +35,7 @@
 
 namespace {
 
-const char* const kVersion = "0.4.0 (season engine, packs, F5 menu, probes, winter snow, weather, climate)";
+const char* const kVersion = "0.1.0 (seasons, packs, GPU swap, weather, climate, snow, lightning, lighting, day length, particles)";
 HMODULE g_self = nullptr;
 volatile LONG g_initDone = 0;
 bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false, g_applyStarted = false,

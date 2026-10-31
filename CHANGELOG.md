@@ -7,9 +7,32 @@ sviluppo e le impostazioni possono cambiare tra una versione e l'altra.
 Legenda dello stato: **provato nel gioco** = verificato in Crimson Desert; **provato fuori dal
 gioco** = verificato con test automatici, dati sintetici, wine o D3D12 software.
 
-## [Non rilasciato]
+## [0.1.0] - non ancora rilasciata (prima release pubblica)
+
+Le versioni 0.2.0 e 0.3.0 qui sotto (e l'etichetta interna 0.4.0) erano solo tappe di sviluppo, mai
+pubblicate: la prima release pubblica riparte da 0.1.0. Il tag `v0.1.0` si crea dopo il test in gioco.
+
+Stato: tutto **provato fuori dal gioco** (test automatici, wine, D3D12 software). **Provato nel gioco**
+prima di questa versione: inventario, pacchetti dell'autunno, menu F5, soglie della neve d'inverno.
 
 ### Aggiunto
+- Cambio in diretta su GPU: le texture già caricate passano al nuovo stadio al cambio di calendario o
+  da F5, distribuite sui fotogrammi (`[GpuSwap] MaxMBPerFrame`); si spegne da sola al primo errore.
+- Meteo stagionale (`[Weather]`): primavera soleggiata, estate limpida con temporali, autunno piovoso,
+  inverno coperto e nevoso; segue l'orologio del gioco; deserto escluso (massima del giorno >= 28 C).
+- Neve d'inverno (`[Snow]`): soglie della neve alzate solo in inverno (10 / 0, provate nel gioco).
+- Fulmini (`[Lightning]`, F5 "Fulmini"): temporali con fulmini e lampi per ora di gioco secondo la
+  stagione (molti in estate e autunno, quasi nessuno in inverno, mai nel deserto). Pronti, fermi
+  finché non è confermato il campo del gioco (`targets.ini [lightning]`).
+- Luce e cielo stagionali (`[Lighting]`): colore e intensità di sole, ambiente, nebbia e cielo per
+  stagione, con passaggi graduali nelle 15 transizioni. Pronti, fermi in attesa dei campi del gioco.
+- Durata del giorno (`[DayLength]`): alba e tramonto stagionali spostando il sole, senza cambiare la
+  velocità dell'orologio del gioco. Pronta, ferma in attesa del campo del sole.
+- Particelle (`[Particles]`): fiocchi più fitti quando nevica d'inverno (attivo); foglie in autunno e
+  pollini in primavera pronti ma fermi.
+- Scheda Info del menu F5: stato vero dei pacchetti e una riga per ogni funzione con il motivo
+  quando è spenta. Ogni funzione si spegne da sola al primo errore (`<funzione>: DISABLED: <motivo>`).
+- Riconosciuta la versione 2.04.02 del gioco (exe 0x6AE46DD0).
 - Temperature stagionali (`[Climate]`): la massima del giorno nelle mappe del clima CPU del gioco segue la stagione (estate +4, primavera -6, autunno -8, inverno -24), deserto e luoghi freddi del gioco esclusi, notti mai sotto -30; originali ripristinati allo spegnimento. Provato fuori dal gioco.
 - `qs_install.exe`: installatore, controllo e disinstallazione per i giocatori.
   - Trova il gioco tramite Steam (registro e `libraryfolders.vdf`) oppure con `--game`.

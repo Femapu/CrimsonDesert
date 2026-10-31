@@ -187,7 +187,8 @@ Prossimo passo meteo: probe che legge [[mgr+0x60]+0x20] +0xAC/+0x16C/+0x170 dura
 
 ## Branch `claude/funzioni-finali` (31/10): funzioni finali prima della v0.1.0
 Da `claude/gpu` (1e52bba). Un commit per tappa: base comune, fulmini, luce, durata del giorno,
-particelle. Compila (`./build.sh test` verde) e i test unitari coprono la logica pura; NULLA è provato
+particelle; poi preparazione della release (versione 0.1.0 nel plugin e in qs_gen, CHANGELOG, guide
+utente, LEGGIMI, sezione `[Climate]` nell'ini, kit di test). Compila (`./build.sh test` verde) e i test unitari coprono la logica pura; NULLA è provato
 in gioco. Il tag v0.1.0 NON è creato: lo decide Stefano dopo il test.
 
 **Fatto**
@@ -218,6 +219,9 @@ in gioco. Il tag v0.1.0 NON è creato: lo decide Stefano dopo il test.
 Senza campo ogni modulo gira lo stesso e scrive nel log cosa farebbe (utile per controllare frequenze e orari).
 
 ### CHECKLIST DI TEST IN GIOCO (unica, su tutto)
+Versione breve da spuntare: `dist/dev/TEST_IN_GIOCO.txt`. Nell'artifact della CI (build senza tag) la
+cartella `sviluppo/` contiene questo file e `probes_funzioni_finali.ini` (giro di probe pronto, sola
+lettura); nelle release con tag la cartella non c'è.
 Prima: `qs_install.exe --check`, installare l'artifact, `controlla.bat` (pacchetti), poi gioco. Tutto si
 legge in `bin64\scripts\QuattroStagioni.log`.
 1. **Avvio**: `version check: ... 0x6AE46DD0` accettato; riga `startup in ... ms: ... weather on, lightning on,

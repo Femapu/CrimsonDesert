@@ -1,0 +1,41 @@
+QuattroStagioni - TEST IN GIOCO (kit di sviluppo, versione completa in HANDOFF.md)
+Log: bin64\scripts\QuattroStagioni.log. Annotare l'ora reale degli eventi (alba, pioggia, tuoni).
+
+PRIMA
+[ ] qs_install.exe --check, poi installazione dell'artifact
+[ ] controlla.bat: pacchetti "da rigenerare"? -> genera_pacchetti.bat con i 19 stadi (vedi HANDOFF.md)
+
+GIRO 1, la mod (probes.ini originale, spento)
+[ ] Avvio: "version check ... 0x6AE46DD0" accettato; riga "startup in ... ms: ..." con weather,
+    lightning, lighting, day length, particles, climate, gpu swap "on"; nessun DISABLED inatteso
+[ ] Pacchetti: "packs: <stadio>.qsp verified"; F5 Info senza stadi mancanti
+[ ] GPU: "gpu: uploader ready ...", "gpu: upload prints read at ExecuteCommandLists"; cambio stagione
+    da F5 (Manuale): le piante visibili cambiano in pochi secondi, senza scatti
+[ ] Meteo: "weather: hooks on; after-compose consumers ..."; ogni 60 s "weather: <tipo> NN% ...";
+    inverno coperto, estate limpida
+[ ] Collana della pioggia: piove; "weather: HUD rainy"; al temporale "Storm bit set" e
+    "lightning: storm begins (...)"
+[ ] Temperature: "climate: attached map ...", in inverno "climate: map ... at -24.00 C"; termometro
+    circa -24 rispetto all'estate; nessun danno da freddo di notte; interruttore F5 -> subito il gioco
+[ ] Neve: "snow: winter SnowStart 10.0 SnowFull 0.0", "snow: attached"; neve nelle zone temperate
+[ ] Deserto (anche di notte, valle di Tashkalp): "weather: entering the desert", nessuna neve,
+    "lightning: no strikes: in the desert"
+[ ] Fulmini (campo non ancora impostato): "lightning: strike #N ..." nei temporali estivi/autunnali,
+    quasi mai d'inverno
+[ ] Luce: "lighting: no light field ... in targets.ini [lighting]" (atteso)
+[ ] Durata del giorno: "daylength: seasonal sunrise H:MM, sunset H:MM ..."; annotare in estate l'ora
+    dell'alba e del tramonto VISIBILI (per GameSunrise / GameSunset)
+[ ] Particelle: "particles: after-compose callback on; winter flakes on, leaves off, pollen off";
+    d'inverno con nevicata "flakes ... (snow X -> Y)" con Y > X, neve più fitta ma non eccessiva
+[ ] F5: scheda Meteo e luce (7 interruttori), scheda Info (una riga per funzione), Salva
+[ ] Uscita: righe "... stop", nessun crash
+
+GIRO 2, probe (copiare sviluppo\probes_funzioni_finali.ini al posto di
+bin64\scripts\QuattroStagioni\probes.ini, tenendo da parte l'originale)
+[ ] probe.log: "probe layer_atmosphere: instance #0 at ... (provider chain)"
+[ ] Restare all'aperto dall'alba al tramonto (o attendere ore): sole, luce, cielo, nebbia
+[ ] Collana della pioggia fino ai tuoni: fulmini (lightning_*, layer_slot_*)
+[ ] Bosco con vento, in autunno: foglie (list_particle, list_effect, list_leaf, list_wind)
+[ ] Mandare probe.log e l'elenco degli orari: gli offset vanno in targets.ini
+    (docs/dev/fulmini.md, luce.md, durata_giorno.md, particelle.md)
+[ ] Rimettere il probes.ini originale

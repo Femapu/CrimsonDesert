@@ -61,13 +61,18 @@ tocca il meteo, quindi convivono. Vedi [PROBLEMI.md](PROBLEMI.md#conflitti-con-a
 
 ### Il meteo, la neve, le giornate corte e le foglie che cadono funzionano?
 
-Non ancora. La mod li **calcola** già (li vedi nel menu, scheda *Meteo e luce*) ma gli agganci ai
-sistemi del gioco sono in sviluppo. Oggi cambiano le texture della vegetazione e del terreno.
+In parte. Sono applicati al gioco: meteo stagionale, neve d'inverno, temperature stagionali e
+fiocchi più fitti quando nevica. Fulmini, luce e cielo per stagione, alba e tramonto stagionali,
+foglie e pollini sono pronti ma fermi: la mod li calcola e li scrive nel log, e li applicherà quando
+sarà confermato il punto esatto del gioco da modificare. La scheda *Info* del menu F5 dice lo stato
+di ognuno.
 
 ### Ho cambiato stagione dal menu ma gli alberi intorno a me sono uguali.
 
-Il cambio vale per quello che il gioco carica dopo. Allontanati, usa il viaggio rapido o ricarica
-la partita. La sostituzione delle texture già caricate è uno dei prossimi passi.
+Le piante già visibili cambiano in pochi secondi, distribuite sui fotogrammi. Se non succede,
+guarda la riga *Cambio texture su GPU* nella scheda *Info*: se è disattivato (il motivo è lì e nel
+log, riga `gpu:`) il cambio vale solo per quello che il gioco carica dopo: allontanati, usa il
+viaggio rapido o ricarica la partita.
 
 ### In autunno alcuni alberi restano verdi.
 

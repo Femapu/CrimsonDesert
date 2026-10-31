@@ -5,11 +5,13 @@ Tutto quello che si regola dal menu in gioco si trova anche nel file
 subito; il pulsante **Salva** in basso a destra le scrive nel file, così restano anche alla
 prossima partita.
 
-> **Cosa funziona oggi e cosa no.** Il calendario, gli stadi, le regioni e il cambio delle texture
-> (con i pacchetti generati sul tuo PC) sono attivi. Meteo, neve, luce, durata del giorno e
-> particelle vengono **calcolati** (li vedi nella scheda *Meteo e luce*, riquadro *Dal vivo*) ma
-> **non sono ancora applicati al gioco**: gli agganci ai sistemi del gioco sono in sviluppo. Gli
-> interruttori esistono già perché le tue scelte restino valide quando arriveranno.
+> **Cosa funziona oggi e cosa no.** Attivi: calendario, stadi, regioni, cambio delle texture (con i
+> pacchetti generati sul tuo PC, anche per le piante già visibili), meteo stagionale, neve d'inverno,
+> temperature stagionali e fiocchi più fitti d'inverno. **Pronti ma ancora fermi**: fulmini, luce e
+> cielo per stagione, durata del giorno, foglie e pollini. La mod li calcola e scrive nel log cosa
+> farebbe, ma li applica solo quando sarà confermato il punto esatto del gioco da modificare (lo dice
+> la scheda *Info*: "in attesa" o "spento" con il motivo). Gli interruttori esistono già perché le
+> tue scelte restino valide. Nel deserto meteo, luce e particelle restano sempre quelli del gioco.
 
 ## Come funziona, in due parole
 
@@ -102,14 +104,22 @@ Una scheda per regione, con:
 
 ### Scheda Meteo e luce
 
-Colonna sinistra, **Cosa controlla la mod** (interruttori, oggi solo calcolati, vedi il riquadro
-in cima alla pagina):
+Colonna sinistra, **Cosa controlla la mod** (vedi il riquadro in cima alla pagina per cosa è già
+applicato al gioco):
 
-- **Meteo stagionale**: estati limpide, autunni piovosi e ventosi, inverni nevosi.
-- **Neve che si accumula**: la copertura cresce quando nevica sotto zero e si scioglie sopra zero.
-- **Luce stagionale**: sole più basso e toni freddi in inverno, più caldi in autunno.
-- **Durata del giorno**: giornate più corte in inverno.
-- **Particelle**: foglie che cadono in autunno, fiato visibile al freddo.
+- **Meteo stagionale**: primavera soleggiata, estate limpida con qualche temporale, autunno piovoso,
+  inverno coperto e nevoso.
+- **Fulmini**: fulmini e tuoni nei temporali, frequenti in estate e autunno, quasi mai in inverno,
+  mai nel deserto (pronti, ancora fermi).
+- **Temperature stagionali**: estati più calde, inverni freddi (mai sotto i -30 gradi); deserto e
+  luoghi freddi del gioco restano come sono.
+- **Neve che si accumula**: in inverno la neve si posa nelle zone temperate.
+- **Luce stagionale**: colore e intensità di sole, luce ambiente, nebbia e cielo per stagione
+  (pronta, ancora ferma).
+- **Durata del giorno**: alba e tramonto seguono la stagione; l'orologio del gioco va alla stessa
+  velocità (pronta, ancora ferma).
+- **Particelle**: fiocchi più fitti quando nevica d'inverno (attivo); foglie che cadono in autunno e
+  pollini in primavera (pronti, ancora fermi).
 
 **Regolazioni**: velocità di accumulo e di scioglimento della neve, **latitudine virtuale** (più
 alta = inverni più bui e sole più basso).
@@ -120,12 +130,11 @@ dalla mod per oggi.
 
 ### Scheda Info
 
-Versione della mod, stato dell'overlay, dell'orologio del gioco e del motore delle stagioni,
-percorso del file di log con il pulsante **Copia percorso** (utile per le segnalazioni).
-
-> In questa versione la scheda dice ancora "Pacchetto stagionale: non ancora disponibile": è un
-> testo rimasto indietro. Lo stato reale dei pacchetti è nella riga in basso del menu
-> (`stadio ... | pacchetto ...`) e nel log.
+Versione della mod, stato dell'overlay, dell'orologio del gioco e del motore delle stagioni, stato
+dei pacchetti (aperti, texture servite, stadi mancanti), una riga per ogni funzione (meteo,
+temperature, fulmini, luce, durata del giorno, particelle, neve, cambio texture su GPU) con il motivo
+quando è spenta, percorso del file di log con il pulsante **Copia percorso** (utile per le
+segnalazioni).
 
 ### In basso
 
@@ -170,7 +179,7 @@ log. Dopo una modifica a mano, riavvia il gioco (o usa il menu, che applica subi
 | `DaySource` | `playtime` | `playtime`, `gameclock`, `manual` | come avanza il calendario |
 | `RealMinutesPerDay` | 90 | 1 .. 1440 | minuti reali per un giorno, con `playtime` |
 | `StartDay` | 0 | 0 .. | giorno di partenza (0 = primo giorno di primavera); in `manual` è il giorno mostrato |
-| `WeatherControl`, `SnowAccumulation`, `LightControl`, `DayLengthControl`, `Particles` | 1 | 0/1 | interruttori (oggi solo calcolati) |
+| `WeatherControl`, `LightningControl`, `ClimateControl`, `SnowAccumulation`, `LightControl`, `DayLengthControl`, `Particles` | 1 | 0/1 | interruttori del menu F5 (scheda *Meteo e luce*) |
 | `SnowAccumPerHour` | 0.25 | 0 .. 5 | frazione di copertura per ora di gioco, quando nevica sotto zero |
 | `SnowMeltPerHour` | 0.15 | 0 .. 5 | scioglimento a +3 gradi (più veloce se fa più caldo) |
 | `VirtualLatitude` | 45 | 0 .. 65 | più alta = inverni più bui, sole più basso |
@@ -184,6 +193,26 @@ di gioco. Le temperature non scendono mai sotto i -30 gradi (il gioco infligge d
 Il giorno raggiunto viene salvato ogni 30 secondi in `bin64\scripts\QuattroStagioni\state.ini`:
 alla prossima partita il calendario riprende da lì. Per ripartire da `StartDay`, cancella quel file
 a gioco chiuso.
+
+### [Weather], [Lightning], [Lighting], [DayLength], [Particles], [Climate], [Snow], [GpuSwap]
+
+Regolazioni avanzate di ogni funzione. Tutte le chiavi sono facoltative e sono spiegate una per una
+nei commenti del file `QuattroStagioni.ini`: se una manca vale il valore predefinito, se è scritta
+male la mod usa il predefinito e lo scrive nel log. I valori per stagione sono cinque numeri in
+ordine primavera, estate, fine estate, autunno, inverno (per esempio
+`StrikesPerHour=8, 14, 12, 12, 1`). In generale conviene lasciarle come sono e usare gli interruttori
+del menu.
+
+| Sezione | Cosa regola |
+|---|---|
+| `[Weather]` | probabilità e durata di sereno, nuvole, pioggia e temporali per stagione; soglia del deserto |
+| `[Lightning]` | quanti temporali hanno fulmini e quanti lampi per ora di gioco, per stagione |
+| `[Lighting]` | moltiplicatori di sole, ambiente, nebbia e cielo per stagione (1 = gioco originale) |
+| `[DayLength]` | spostamento di alba e tramonto per stagione, in ore |
+| `[Particles]` | quanto più fitti i fiocchi d'inverno; foglie e pollini per stagione |
+| `[Climate]` | di quanti gradi cambia la massima del giorno in ogni stagione |
+| `[Snow]` | soglie della neve d'inverno |
+| `[GpuSwap]` | quanti MB per fotogramma usa il cambio delle texture già caricate |
 
 ### [Region.Nome]
 
@@ -211,6 +240,8 @@ Sezioni `Region.Temperate`, `Region.NorthCold`, `Region.SwampJungle`, `Region.Aq
 | `QuattroStagioni\state.ini` | giorno del calendario raggiunto (scritto dalla mod) |
 | `QuattroStagioni\packs\*.qsp` | pacchetti stagionali generati sul tuo PC |
 | `QuattroStagioni\probes.ini` | strumenti per sviluppatori, spenti (`Enabled=0`): non toccare |
+| `QuattroStagioni\targets.ini` | punti del gioco usati da fulmini, luce, durata del giorno, foglie (per sviluppatori): non toccare |
+| `QuattroStagioni\sun_table.ini` | posizioni del sole imparate dalla mod durante il gioco (durata del giorno) |
 | `QuattroStagioni\install\` | registro, copie di riserva e manifest dell'installatore (servono a disinstallare) |
 | `..\winmm.ini` | impostazioni di Ultimate ASI Loader (`LoadPlugins=1`, `LoadFromScriptsOnly=1`) |
 

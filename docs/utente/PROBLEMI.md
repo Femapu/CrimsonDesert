@@ -79,13 +79,29 @@ un'altra mod ha cambiato quelle texture.
 1. Nel log c'è `packs: ... verified`? Se no, vedi [Pacchetto rifiutato](#pacchetto-rifiutato).
 2. Lo stadio attuale ha un pacchetto? Il menu F5 mostra in basso `stadio ... | pacchetto ...`.
    In estate (`U`) non c'è niente da cambiare: è il gioco originale.
-3. Le texture cambiano per ciò che il gioco carica **dopo** il cambio di stadio. Allontanati,
-   usa il viaggio rapido o ricarica la partita.
+3. Le piante già visibili cambiano in pochi secondi grazie al cambio su GPU. Se nella scheda *Info*
+   il *Cambio texture su GPU* è disattivato, le texture cambiano solo per ciò che il gioco carica
+   **dopo**: allontanati, usa il viaggio rapido o ricarica la partita.
 4. Il riepilogo di `qs_gen` aveva un **tasso di fit** basso? Le texture che non rientrano nella
    dimensione originale restano quelle del gioco. Segnalalo con il log `qs_gen_<stadio>.log` che
    trovi nella cartella dei pacchetti.
 5. Rallentamenti o texture che compaiono in ritardo: lascia `WaitForTargetReads=1` e prova
    `CacheMB=256`.
+
+## Una funzione si è spenta da sola ("DISABLED" nel log)
+
+Ogni funzione che scrive nella memoria del gioco controlla quello che fa. Al primo problema smette,
+lascia il gioco com'era e scrive una riga nel log; le altre funzioni continuano.
+
+| Riga nel log | Cosa vuol dire |
+|---|---|
+| `weather: DISABLED: ... signature not found (game update?)` | dopo una patch il meteo del gioco è cambiato: serve una versione aggiornata della mod. Senza meteo si fermano anche fulmini, luce, durata del giorno e particelle |
+| `climate: DISABLED: ...` | le temperature stagionali sono spente, quelle del gioco restano |
+| `gpu: DISABLED: ...` | il cambio delle texture già caricate è spento: le piante cambiano quando il gioco le ricarica |
+| `lightning: DISABLED: ...`, `lighting: DISABLED: ...`, `daylength: DISABLED: ...`, `particles: DISABLED: ...` | quella funzione è spenta; il motivo è nella riga |
+| `... campo ... non ancora trovato (probe)` | non è un errore: la funzione è pronta ma aspetta di sapere quale punto del gioco modificare |
+
+Lo stesso stato si legge nella scheda *Info* del menu F5. Nella segnalazione allega la riga intera.
 
 ## Il menu F5 non compare (overlay disabilitato)
 
