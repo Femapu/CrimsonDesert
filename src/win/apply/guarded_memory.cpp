@@ -59,6 +59,8 @@ WriteCheck checkWritable(const probe::ModuleInfo& m, uintptr_t addr, size_t n) {
 bool GuardedMemory::read(uint64_t addr, void* out, size_t n) { return probe::mem::read(uintptr_t(addr), out, n); }
 
 bool GuardedMemory::write(uint64_t addr, const void* in, size_t n, std::string* why) {
+    // Small vectors (weather layer, light colours: 3..4 floats) take the block path.
+    if (n > 8 && n <= 64) return writeBlock(addr, in, n, why);
     if (n == 0 || n > 8) {
         if (why) *why = "bad size";
         return false;

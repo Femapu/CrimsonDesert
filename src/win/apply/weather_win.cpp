@@ -76,6 +76,7 @@ float g_desertFade = 1.0f;                // worker only: desert (or unknown) fa
 uint64_t g_lastHourTick = 0;              // game thread only
 uintptr_t g_goodHourFn = 0;               // game thread only
 std::atomic<uint32_t> g_writeFails{0};
+std::string g_lastWriteErr;               // under g_mu
 apply::GuardedMemory* g_mem = nullptr;
 std::atomic<PostComposeFn> g_post[8];
 std::atomic<bool> g_hookOn{false};
@@ -181,6 +182,10 @@ void afterCompose(uintptr_t mgr) {
         ++wrote;
     }
     if (!ok) {
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            g_lastWriteErr = why;
+        }
         if (g_writeFails.fetch_add(1) + 1 >= 50) {
             g_active = false;  // the worker logs it
         }
@@ -318,7 +323,12 @@ DWORD WINAPI worker(LPVOID) {
         prev = now;
         if (dt > 1.0) dt = 1.0;
         if (g_writeFails.load() >= 50) {
-            disable("writes to the weather layer keep failing");
+            std::string last;
+            {
+                std::lock_guard<std::mutex> lk(g_mu);
+                last = g_lastWriteErr;
+            }
+            disable("writes to the weather layer keep failing (" + last + ")");
             break;
         }
         season::SeasonState s;
