@@ -190,7 +190,7 @@ std::string weatherIniTemplate() {
         ";   Hours      durata di un periodo in ore di gioco (min, max); StormHours per i temporali\n"
         ";   Rain       intensità della pioggia o neve (min, max, 0..1); StormMin intensità minima del temporale\n"
         ";   GameRain   quota della pioggia del gioco che resta (0..1; d'inverno diventa neve)\n"
-        "; I temporali per ora sono pioggia fortissima con cielo chiuso: i fulmini non sono ancora controllati.\n";
+        "; I temporali sono pioggia fortissima con cielo chiuso; i fulmini li regola la sezione [Lightning].\n";
     const char* comment[season::kPhaseCount] = {"; primavera: soleggiata, poca pioggia, temporali rari",
                                                  "; estate: poca pioggia ma temporali estivi",
                                                  "; fine estate: poca pioggia, qualche temporale",
@@ -296,7 +296,7 @@ void WeatherDirector::roll(const WeatherSeason& s) {
     const bool snowing = snowShare(s.winterK) >= 0.5f;
     log_.push_back(fmt("weather: spell %s (%s) for %.1f game h, intensity %.0f%%, season %s%s", toString(k),
                        weatherKindIt(k, snowing), sp.hours, sp.intensity * 100.0f, season::toString(ph),
-                       storm ? " (storm = heavy rain tier: lightning not yet controlled)" : ""));
+                       storm ? " (storm = heavy rain tier; lightning: [Lightning])" : ""));
 }
 
 void WeatherDirector::advance(double gameHours, const WeatherSeason& s) {

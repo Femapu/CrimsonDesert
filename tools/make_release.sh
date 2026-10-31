@@ -77,6 +77,13 @@ if [[ -n "${ULTIMATE_ASI_LOADER:-}" ]]; then
   cp "$ULTIMATE_ASI_LOADER_LICENSE" "$DEST/loader/LICENSE-Ultimate-ASI-Loader.txt"
 fi
 
+# development builds (no tag on HEAD, version "...-dev+sha", e.g. the CI artifact): the test kit for the
+# in-game test session; never in a tagged release
+if [[ "$VERSION" == *-dev* && -d dist/dev ]]; then
+  mkdir -p "$DEST/sviluppo"
+  cp dist/dev/* "$DEST/sviluppo/"
+fi
+
 cat > "$DEST/LEGGIMI.txt" <<EOF
 QuattroStagioni $VERSION - stagioni dinamiche per Crimson Desert 2.04 (PC, Steam)
 
@@ -86,6 +93,12 @@ QuattroStagioni $VERSION - stagioni dinamiche per Crimson Desert 2.04 (PC, Steam
    Disinstallazione completa:         disinstalla.bat   (oppure qs_install.exe --uninstall)
 3. Doppio clic su genera_pacchetti.bat: crea le texture stagionali sul tuo PC (passo 5).
 4. Avvia il gioco e premi F5.
+
+Cosa fa: vegetazione e terreno cambiano con le stagioni (anche le piante già visibili), meteo
+stagionale (estati limpide, autunni piovosi, inverni coperti e nevosi), neve d'inverno, temperature
+stagionali, fiocchi più fitti quando nevica. Pronti ma ancora fermi: fulmini, luce e cielo per
+stagione, alba e tramonto stagionali, foglie e pollini (la scheda Info del menu F5 dice lo stato).
+Il deserto resta sempre come nel gioco originale.
 
 Nessun file del gioco viene modificato. Nessun asset di Pearl Abyss è incluso: le texture
 stagionali vengono create sul tuo PC dai tuoi file del gioco e restano lì.

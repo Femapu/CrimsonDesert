@@ -39,7 +39,7 @@ using namespace qs;
 
 namespace {
 
-const char* const kVersion = "qs_gen 0.4.0";
+const char* const kVersion = "qs_gen 0.1.0";
 
 struct Args {
     std::string game, classes = "data/vegetation_classes_v1.json", recipes = "data/recipes", transform = "recipes";

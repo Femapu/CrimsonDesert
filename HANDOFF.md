@@ -1,4 +1,4 @@
-# Handoff QuattroStagioni (aggiornato 30 ottobre 2026, fine sessione cloud)
+# Handoff QuattroStagioni (aggiornato 31 ottobre 2026, branch claude/funzioni-finali)
 
 ## Obiettivo
 Mod pubblicabile di stagioni dinamiche per Crimson Desert 2.04 con DLC "Charting the Unknown".
@@ -184,3 +184,97 @@ Prossimo passo meteo: probe che legge [[mgr+0x60]+0x20] +0xAC/+0x16C/+0x170 dura
   contiene le altre due): compilano e i test sono verdi, NESSUNA provata in gioco.
 - Il PC ha la build 2.04.02 (exe 0x6AE46DD0): i pacchetti `.qsp` potrebbero dover essere rigenerati con
   `qs_gen` se la verifica della build li rifiuta (scheda Info: stadi mancanti; log `pack ...`).
+
+## Branch `claude/funzioni-finali` (31/10): funzioni finali prima della v0.1.0
+Da `claude/gpu` (1e52bba). Un commit per tappa: base comune, fulmini, luce, durata del giorno,
+particelle; poi preparazione della release (versione 0.1.0 nel plugin e in qs_gen, CHANGELOG, guide
+utente, LEGGIMI, sezione `[Climate]` nell'ini, kit di test). Compila (`./build.sh test` verde) e i test unitari coprono la logica pura; NULLA è provato
+in gioco. Il tag v0.1.0 NON è creato: lo decide Stefano dopo il test.
+
+**PATCH 2.04.03 (31/10, exe 0x6AE58024, 329.084.312 byte)**: riconosciuta in `known_builds.h` (commit di
+Stefano). Le firme del meteo (update del climate manager e query HUD) e della neve sono verificate solo su
+0x6AE387F2 e 0x6AE46DD0: su 2.04.03 vanno riverificate in gioco. Se non corrispondono la mod resta sicura
+(`weather: DISABLED: climate update: signature not found (game update?)`, e con il meteo si fermano anche
+fulmini, luce, durata del giorno e particelle). Temperature (vtable da RTTI) e GPU non dipendono da firme.
+I pacchetti `.qsp` vanno rigenerati per la 2.04.03 (legati all'exe esatto). Dove sotto si legge 2.04.02 /
+0x6AE46DD0 vale ora la build installata.
+
+**Fatto**
+- Base comune: le funzioni scrivono dopo la composizione del gioco usando l'hook del meteo già
+  verificato su 2.04.02 (nessuna firma nuova). Con `[Weather] Enabled=0` l'hook resta e il meteo non
+  scrive. Stato di ogni funzione nella scheda Info del menu F5; al primo errore la funzione si spegne
+  da sola con la riga `<funzione>: DISABLED: <motivo>`. Probe nuove `Instance=provided`
+  (`Provider=climate_manager`, `Chain=`): leggono i blocchi senza un secondo hook. Guida:
+  `docs/dev/probe_funzioni_finali.md`. `ExpectTimestamp` di probes.ini e targets.ini ora 0x6AE46DD0.
+- Fulmini (`[Lightning]`, F5 "Fulmini"): temporali con fulmini e lampi per ora di gioco per stagione
+  (estate e autunno alti, inverno quasi zero, deserto zero). Il tuono resta quello del gioco. Guida
+  `docs/dev/fulmini.md`.
+- Luce e cielo (`[Lighting]`, F5 "Luce stagionale"): moltiplicatori per S U L A W di sole, ambiente,
+  nebbia e cielo, interpolati sugli stadi (15 transizioni), estate = gioco. Guida `docs/dev/luce.md`.
+- Durata del giorno (`[DayLength]`, F5 "Durata del giorno"): alba e tramonto per stagione rimappando
+  l'ora del sole, senza toccare la velocità dell'orologio; la tabella del sole si impara in gioco
+  (`QuattroStagioni\sun_table.ini`, solo sul PC). Guida `docs/dev/durata_giorno.md`.
+- Particelle (`[Particles]`, F5 "Particelle"): fiocchi più fitti d'inverno sul campo neve +0x16C già
+  verificato (ACCESO, boost 1.25, minimo 0.35, solo quando nevica già). Guida `docs/dev/particelle.md`.
+
+**Spento in attesa delle probe** (sezioni in `bin64\scripts\QuattroStagioni\targets.ini`, tutte `Enabled=0`)
+| Funzione | Sezione targets.ini | Cosa manca | Probe |
+|---|---|---|---|
+| Fulmini | `[lightning]` Field, Mode | campo che fa scattare il lampo | lightning_*, layer_weather, layer_table, layer_slot_*, list_lightning |
+| Luce | `[lighting]` SunColor, SunIntensity, AmbientColor, AmbientIntensity, FogDensity, SkyColor | offset nell'atmosfera | layer_atmosphere(_tail), list_light/sky/fog |
+| Durata del giorno | `[daylength]` Field, Kind | direzione del sole (o ora del cielo); anche GameSunrise/GameSunset reali | layer_atmosphere |
+| Foglie e pollini | `[particles]` Leaves, Pollen | un campo pilotabile (forse non esiste) | list_particle/effect/leaf/wind/foliage, layer_weather |
+Senza campo ogni modulo gira lo stesso e scrive nel log cosa farebbe (utile per controllare frequenze e orari).
+
+### CHECKLIST DI TEST IN GIOCO (unica, su tutto)
+Versione breve da spuntare: `dist/dev/TEST_IN_GIOCO.txt`. Nell'artifact della CI (build senza tag) la
+cartella `sviluppo/` contiene questo file e `probes_funzioni_finali.ini` (giro di probe pronto, sola
+lettura); nelle release con tag la cartella non c'è.
+Prima: `qs_install.exe --check`, installare l'artifact, `controlla.bat` (pacchetti), poi gioco. Tutto si
+legge in `bin64\scripts\QuattroStagioni.log`.
+1. **Avvio**: `version check: ... 0x6AE58024` (2.04.03) accettato; `weather: climate update found ...` (firma
+   valida anche su 2.04.03); riga `startup in ... ms: ... weather on, lightning on,
+   lighting on, day length on, particles on, climate on, gpu swap on`. Nessun `DISABLED` inatteso.
+2. **Pacchetti**: `packs: A.qsp verified ...` per ogni stadio; nessun `refused: pack was generated for game build`.
+   F5 Info: nessuno stadio mancante.
+3. **GPU**: `gpu: hooked ...`, `gpu: uploader ready on the game queue ...`, `gpu: upload prints read at ExecuteCommandLists`;
+   cambiando stagione da F5 (Manuale) le piante già visibili cambiano in pochi secondi, senza scatti.
+   `gpu: DISABLED:` = da segnalare con la riga intera.
+4. **Meteo**: `weather: climate update found ...`, `weather: hooks on; after-compose consumers ...`, ogni 60 s
+   `weather: <tipo> NN% (... season <fase> ...)`. Estate limpida, autunno piovoso, inverno coperto (cielo non azzurro).
+5. **Collana della pioggia**: indossata, il gioco fa piovere: nel log `game rain` sale, `weather: HUD rainy`; con
+   temporale del gioco `weather: HUD storm ... Storm bit set` e `lightning: storm begins (...)`.
+6. **Temperature**: `climate: PAClimateTexture vtable rva ... from RTTI`, `climate: attached map ...`,
+   `climate: map ... at -24.00 C ...` in inverno; termometro circa -24 rispetto all'estate; nessun danno da freddo
+   di notte nei forti; spegnendo "Temperature stagionali" le temperature tornano subito quelle del gioco.
+7. **Neve**: `snow: winter SnowStart 10.0 SnowFull 0.0 ...`, `snow: attached, originals ...`; neve nelle zone
+   temperate d'inverno.
+8. **Deserto** (anche di notte, e la valle di Tashkalp): `weather: entering the desert (hottest day top ...)`,
+   `lightning: no strikes: in the desert`; nel deserto meteo, luce e particelle del gioco, nessuna neve.
+9. **Fulmini**: d'estate o d'autunno, a temporale: `lightning: storm begins (summer, chance 0.90): with lightning`,
+   righe `lightning: strike #N (...)`, `lightning: storm ends`; d'inverno quasi nessun lampo. Con il campo impostato:
+   lampi visibili, `writes` cresce solo durante i temporali; all'uscita `lightning: stop (N storms, N strikes, N writes)`.
+10. **Luce**: `lighting: start, N field(s) ...`; senza campi `lighting: no light field ... in targets.ini [lighting]`.
+    Con i campi: `lighting: state active`, ogni 60 s `lighting: stage <stadio> on | sun ... | fog ... | writes N`;
+    inverno più freddo e tenue, autunno dorato, estate uguale al gioco; spegnendo F5 "Luce stagionale" torna
+    gradualmente la luce del gioco. `lighting: DISABLED: ... non ricomposto dal gioco` = campo sbagliato.
+11. **Durata del giorno**: `daylength: seasonal sunrise H:MM, sunset H:MM (... h of day, phase ...)`; con il campo:
+    `daylength: sun table loaded/saved (N/96 bins known)`, `daylength: active; ... game hour 16:00 -> sun hour ...`;
+    d'inverno il sole sorge tardi e tramonta presto, l'orologio del HUD va alla stessa velocità di prima;
+    nessuno scatto dopo aver dormito. Annotare alba e tramonto visibili del gioco in estate (GameSunrise/GameSunset).
+12. **Particelle**: `particles: after-compose callback on; winter flakes on, leaves off, pollen off`; d'inverno
+    con nevicata `particles: winter 100%, flakes 100% (snow X -> Y)` con Y > X e neve più fitta ma non eccessiva;
+    fuori inverno Y = X. `particles: leaves off: campo non ancora trovato (probe)` è atteso.
+13. **Menu F5**: scheda Meteo e luce con gli interruttori Meteo, Fulmini, Temperature, Neve, Luce, Durata del giorno,
+    Particelle; scheda Info con una riga di stato per ciascuno (motivo se spento). Salvataggio dell'ini dal menu.
+14. **Uscita**: righe `... stop` di ogni modulo, nessun crash in chiusura.
+Poi un giro di probe (`docs/dev/probe_funzioni_finali.md`) per i campi mancanti, uno alla volta.
+
+### Pacchetti `.qsp` e 2.04.02 / 2.04.03
+Ogni pacchetto è legato all'exe esatto (dimensione + timestamp) e agli hash dei pamt: il plugin rifiuta quelli
+di un'altra build (`packs: ... refused: pack was generated for game build ...`). Con la 2.04.03 installata
+(exe 0x6AE58024) tutti i 19 pacchetti creati prima vanno rigenerati. Controllo:
+`controlla.bat` (scrive "da rigenerare"). Rigenerazione di tutti i 19 stadi con `genera_pacchetti.bat` seguito
+dagli stadi (U è l'estate del gioco: niente da generare, 4 piani + 15 transizioni = 19):
+`genera_pacchetti.bat S L A W "S>U.1" "S>U.2" "S>U.3" "U>L.1" "U>L.2" "U>L.3" "L>A.1" "L>A.2" "L>A.3" "A>W.1" "A>W.2" "A>W.3" "W>S.1" "W>S.2" "W>S.3"`
+(elenco: `qs_gen.exe --list-stages`).

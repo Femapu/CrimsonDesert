@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -150,6 +151,8 @@ bool resolveClass(Runtime& rt) {
     return true;
 }
 
+std::atomic<ProbeProviderFn> g_providerClimate{nullptr};
+
 bool resolveSignature(Runtime& rt) {
     const ProbeSpec& p = rt.spec;
     std::vector<uint64_t> hits = scanModule(g_mod, p.signature, p.sigInData, 64);
@@ -189,6 +192,11 @@ bool resolveAnchor(Runtime& rt) {
             if (p.logVtable && vt) logVtable(vt, p.maxSlots);
         }
         return false;  // nothing else to do
+    }
+    if (!p.provider.empty()) {
+        plog::line("probe %s: object from provider %s (read-only; available once the weather hook ran a tick)", p.name.c_str(),
+                   p.provider.c_str());
+        return true;
     }
     if (!p.className.empty()) return resolveClass(rt);
     if (!p.signatureText.empty()) return resolveSignature(rt);
@@ -335,19 +343,21 @@ void addInstance(Runtime& rt, uintptr_t addr, uintptr_t expectVt, const char* ho
 
 void acquireInstances(Runtime& rt, uint64_t now) {
     const ProbeSpec& p = rt.spec;
-    if (p.instance == InstanceMode::Global) {
-        uintptr_t a = g_mod.base + rt.anchorRva;
+    if (p.instance == InstanceMode::Global || p.instance == InstanceMode::Provided) {
+        uintptr_t a = p.instance == InstanceMode::Provided ? probeProviderValue(p.provider) : g_mod.base + rt.anchorRva;
+        if (!a) return;  // the provider has nothing yet
         for (int64_t off : p.chain) {
             uintptr_t next = 0;
             if (!mem::readT(a + uintptr_t(off), next) || !next) return;  // chain not valid (yet)
             a = next;
         }
         if (!rt.inst.empty() && rt.inst[0].addr != a) {
-            plog::line("probe %s: global chain now points to 0x%llX (was 0x%llX): snapshot reset", p.name.c_str(),
+            plog::line("probe %s: chain now points to 0x%llX (was 0x%llX): snapshot reset", p.name.c_str(),
                        (unsigned long long)a, (unsigned long long)rt.inst[0].addr);
             rt.inst.clear();
         }
-        if (rt.inst.empty()) addInstance(rt, a, 0, p.chain.empty() ? "global" : "global chain");
+        if (rt.inst.empty())
+            addInstance(rt, a, 0, p.instance == InstanceMode::Provided ? "provider chain" : (p.chain.empty() ? "global" : "global chain"));
     } else if (p.instance == InstanceMode::Scan) {
         if (now < rt.nextScan || rt.inst.size() >= p.maxInstances) return;
         if (!rt.scanActive) {
@@ -650,4 +660,15 @@ void probeStop() {
     }
 }
 
+}  // namespace qs
+
+namespace qs {
+void probeSetProvider(const char* name, ProbeProviderFn fn) {
+    if (name && std::string(name) == "climate_manager") probe::g_providerClimate = fn;
+}
+uintptr_t probeProviderValue(const std::string& name) {
+    if (name != "climate_manager") return 0;
+    ProbeProviderFn fn = probe::g_providerClimate.load();
+    return fn ? fn() : 0;
+}
 }  // namespace qs

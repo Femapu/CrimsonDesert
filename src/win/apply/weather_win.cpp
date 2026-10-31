@@ -22,6 +22,7 @@
 #include "../probe/hooks.h"
 #include "../probe/memory.h"
 #include "../probe/module.h"
+#include "../probe/probe.h"
 #include "../qs_state.h"
 #include "../winutil.h"
 #include "guarded_memory.h"
@@ -71,10 +72,37 @@ std::atomic<uintptr_t> g_mgr{0};
 std::atomic<int64_t> g_flags{-1};
 std::atomic<float> g_hour{-1.0f};
 float g_bypass = 1.0f, g_winterK = 0.0f;  // under g_mu
+float g_desertFade = 1.0f;                // worker only: desert (or unknown) fade for the after-compose features
 uint64_t g_lastHourTick = 0;              // game thread only
 uintptr_t g_goodHourFn = 0;               // game thread only
 std::atomic<uint32_t> g_writeFails{0};
 apply::GuardedMemory* g_mem = nullptr;
+std::atomic<PostComposeFn> g_post[8];
+std::atomic<bool> g_hookOn{false};
+std::atomic<float> g_bypassA{1.0f};
+std::atomic<int> g_desertA{-1};  // -1 unknown, 0 no, 1 yes
+
+void runPostCompose(uintptr_t mgr, float dt) {
+    if (!g_mem) return;
+    ComposeContext c;
+    c.manager = mgr;
+    uintptr_t layers = 0;
+    if (probe::mem::readT(mgr + kLayers, layers) && layers) {
+        probe::mem::readT(layers + kLayerWeather, c.weather);
+        probe::mem::readT(layers + kLayerAtmosphere, c.atmosphere);
+    }
+    c.hour = g_hour.load(std::memory_order_relaxed);
+    c.dtSec = dt;
+    c.bypass = g_bypassA.load(std::memory_order_relaxed);
+    const int d = g_desertA.load(std::memory_order_relaxed);
+    c.desertKnown = d >= 0;
+    c.desert = d == 1;
+    c.mem = g_mem;
+    for (std::atomic<PostComposeFn>& f : g_post) {
+        PostComposeFn fn = f.load(std::memory_order_acquire);
+        if (fn) fn(c);
+    }
+}
 
 void disable(const std::string& why) {
     g_active = false;
@@ -166,6 +194,7 @@ void afterCompose(uintptr_t mgr) {
 void hookUpdate(uintptr_t mgr, float dt) {
     g_update(mgr, dt);
     afterCompose(mgr);
+    runPostCompose(mgr, dt);
 }
 
 void hookQuery(uintptr_t actor, uint32_t* flags, uint8_t* indoors) {
@@ -274,7 +303,8 @@ DWORD WINAPI worker(LPVOID) {
         std::lock_guard<std::mutex> lk(g_mu);
         g_info.hudHooked = hud;
     }
-    QS_INFO("weather: hooks on; storms are a heavy rain tier (lightning not yet controlled)");
+    g_hookOn = true;
+    QS_INFO("weather: hooks on; after-compose consumers (lightning, lighting, daylength, particles) can run");
 
     apply::GameClock clock;
     uintptr_t map = 0, mapMgr = 0;
@@ -357,6 +387,9 @@ DWORD WINAPI worker(LPVOID) {
         g_winterK = ws.winterK;
         const float step = cfg.desertFadeSec > 0 ? float(dt) / cfg.desertFadeSec : 1.0f;
         g_bypass = bypassAll ? std::min(1.0f, g_bypass + step) : std::max(0.0f, g_bypass - step);
+        g_desertFade = (!desertKnown || desert) ? std::min(1.0f, g_desertFade + step) : std::max(0.0f, g_desertFade - step);
+        g_bypassA = g_desertFade;
+        g_desertA = desertKnown ? (desert ? 1 : 0) : -1;
         g_active = g_info.state != WeatherModState::Disabled;
         flushLog();
 
@@ -394,6 +427,7 @@ DWORD WINAPI worker(LPVOID) {
     }
     // Stop writing first, then unhook: the game recomposes its own weather on the next tick.
     g_active = false;
+    g_hookOn = false;
     g_hookQuery.remove();
     g_hookUpdate.remove();
     Sleep(50);
@@ -433,17 +467,14 @@ bool weatherStart(const std::wstring& scriptsDir, bool versionOk) {
         g_dir.seed(uint32_t(GetTickCount64() * 2654435761ull) ^ GetCurrentProcessId());
         g_info.started = true;
     }
-    if (!cfg.enabled) {
-        QS_INFO("weather: [Weather] Enabled=0: seasonal weather off");
-        disable("[Weather] Enabled=0");
-        g_running = 0;
-        return false;
-    }
+    if (!cfg.enabled)  // the hook still runs (desert check, clock, after-compose features); nothing of the weather is written
+        QS_INFO("weather: [Weather] Enabled=0: seasonal weather off, the hook stays for the other features");
     if (!versionOk) {
         disable("version guard failed: the game is never written");
         g_running = 0;
         return false;
     }
+    probeSetProvider("climate_manager", &weatherClimateManager);  // probes.ini Provider=climate_manager
     QS_INFO("weather: start in %u ms (ramp %.2f/h, clear cover %.2f, desert >= %.1f C within %d texels)", cfg.startDelayMs,
             cfg.rampPerHour, cfg.clearCover, cfg.desertTopC, cfg.desertRadius);
     g_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -467,6 +498,28 @@ void weatherStop() {
 }
 
 uintptr_t weatherClimateManager() { return weatherimpl::g_mgr.load(); }
+
+bool weatherAddPostCompose(PostComposeFn fn) {
+    using namespace weatherimpl;
+    if (!fn) return false;
+    for (std::atomic<PostComposeFn>& f : g_post)
+        if (f.load() == fn) return true;
+    for (std::atomic<PostComposeFn>& f : g_post) {
+        PostComposeFn expected = nullptr;
+        if (f.compare_exchange_strong(expected, fn)) return true;
+    }
+    return false;
+}
+
+void weatherRemovePostCompose(PostComposeFn fn) {
+    using namespace weatherimpl;
+    for (std::atomic<PostComposeFn>& f : g_post) {
+        PostComposeFn expected = fn;
+        f.compare_exchange_strong(expected, nullptr);
+    }
+}
+
+bool weatherHookInstalled() { return weatherimpl::g_hookOn.load(); }
 
 bool weatherGetInfo(WeatherInfo& out) {
     using namespace weatherimpl;

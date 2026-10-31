@@ -186,20 +186,20 @@ Snow cover grows when it snows below zero and melts above zero.
 Luce stagionale
 Seasonal light
 
-Sole più basso e toni freddi in inverno, più caldi in autunno.
-Lower sun and cold tones in winter, warmer in autumn.
+Colore e intensità di sole, ambiente, nebbia e cielo per stagione.
+Season colour and strength of sun, ambient light, fog and sky.
 
 Durata del giorno
 Day length
 
-Giornate più corte in inverno, più lunghe in estate.
-Shorter days in winter, longer in summer.
+Alba e tramonto seguono la stagione; l'orologio del gioco non cambia velocità.
+Sunrise and sunset follow the season; the game's clock keeps its speed.
 
 Particelle
 Particles
 
-Foglie che cadono in autunno, fiato visibile al freddo.
-Falling leaves in autumn, visible breath in the cold.
+Foglie che cadono in autunno, pollini in primavera, fiocchi più fitti in inverno.
+Falling leaves in autumn, pollen in spring, denser snowflakes in winter.
 
 Regolazioni
 Tuning
@@ -573,3 +573,58 @@ State: %s
 
 in attesa della coda del gioco
 waiting for the game queue
+
+Fulmini
+Lightning
+
+Fulmini e tuoni nei temporali: frequenti in estate e autunno, quasi mai in inverno; mai nel deserto.
+Lightning and thunder in storms: frequent in summer and autumn, hardly ever in winter; never in the desert.
+
+Temporali: pioggia forte; fulmini secondo la stagione (stato nella scheda Info).
+Storms: heavy rain; lightning follows the season (status in the Info tab).
+
+non ricomposto dal gioco: si accumulerebbe (valore originale rimesso)
+not composed anew by the game: it would accumulate (original value restored)
+
+ha un valore non finito: campo sbagliato?
+has a non-finite value: wrong field?
+
+fuori dai limiti Min/Max di targets.ini:
+outside the Min/Max limits of targets.ini:
+
+le scritture sui campi della luce non riescono
+writes to the light fields keep failing
+
+in attesa dell'aggancio del meteo
+waiting for the weather hook
+
+spenta dal menu F5 o regione temperata disattivata
+off from the F5 menu or temperate region disabled
+
+sole
+sun
+
+ambiente
+ambient
+
+cielo
+sky
+
+spenta in QuattroStagioni.ini ([Lighting] Enabled=0)
+off in QuattroStagioni.ini ([Lighting] Enabled=0)
+
+controllo della versione non superato: il gioco non viene scritto
+version check failed: the game is never written
+
+campi della luce non ancora trovati (probe)
+light fields not found yet (probes)
+
+nessuno slot libero dopo la composizione del meteo
+no free slot after the weather compose
+
+impossibile creare il thread della luce
+cannot create the light thread
+
+# Seasonal particles (Info tab, src/win/apply/particles_win.cpp)
+Particelle stagionali
+Seasonal particles

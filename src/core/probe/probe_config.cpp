@@ -58,6 +58,7 @@ const char* toString(InstanceMode m) {
         case InstanceMode::Capture: return "capture";
         case InstanceMode::Scan: return "scan";
         case InstanceMode::Global: return "global";
+        case InstanceMode::Provided: return "provided";
     }
     return "?";
 }
@@ -140,9 +141,10 @@ bool parseProbeConfig(const Ini& ini, ProbeConfig& out, std::vector<std::string>
         p.className = ini.get(sec, "Class");
         p.listGlob = ini.get(sec, "ListClasses");
         p.signatureText = ini.get(sec, "Signature");
-        int anchors = !p.className.empty() + !p.listGlob.empty() + !p.signatureText.empty() + ini.has(sec, "Rva");
+        p.provider = lower(ini.get(sec, "Provider"));
+        int anchors = !p.className.empty() + !p.listGlob.empty() + !p.signatureText.empty() + ini.has(sec, "Rva") + !p.provider.empty();
         if (anchors != 1) {
-            bad("needs exactly one of Class, ListClasses, Signature, Rva");
+            bad("needs exactly one of Class, ListClasses, Signature, Rva, Provider");
             continue;
         }
         std::string err;
@@ -180,8 +182,9 @@ bool parseProbeConfig(const Ini& ini, ProbeConfig& out, std::vector<std::string>
         else if (inst == "capture") p.instance = InstanceMode::Capture;
         else if (inst == "scan") p.instance = InstanceMode::Scan;
         else if (inst == "global") p.instance = InstanceMode::Global;
+        else if (inst == "provided") p.instance = InstanceMode::Provided;
         else {
-            bad("Instance must be none, capture, scan or global");
+            bad("Instance must be none, capture, scan, global or provided");
             continue;
         }
         p.slot = int(ini.getInt(sec, "Slot", -1));
@@ -250,6 +253,14 @@ bool parseProbeConfig(const Ini& ini, ProbeConfig& out, std::vector<std::string>
         }
         if (p.instance == InstanceMode::Global && !isFunc) {
             bad("Instance=global needs Signature (usually with Resolve=rip:..) or Rva");
+            continue;
+        }
+        if ((p.instance == InstanceMode::Provided) != !p.provider.empty()) {
+            bad("Provider and Instance=provided go together");
+            continue;
+        }
+        if (!p.provider.empty() && p.provider != "climate_manager") {
+            bad("Provider must be climate_manager");
             continue;
         }
         if ((p.dumpSize || !p.watches.empty()) && p.instance == InstanceMode::None) {

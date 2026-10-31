@@ -6,8 +6,8 @@
 // +0x16C snow, +0x170 rain) and an atmosphere at [[mgr+0x60]+0x28] (+0xAC cloud cover the sky shows,
 // about 0.45 by default, 1 = overcast). Rain/snow effects and the HUD read those values; writing them
 // right AFTER the compose changes the visible weather. Storms: the HUD has a Storm flag (bit 6) but no
-// known field drives lightning yet, so a Storm spell is the heaviest rain tier (rain, overcast, humid)
-// and the plugin logs that lightning is not controlled.
+// known field drives lightning yet, so a Storm spell is the heaviest rain tier (rain, overcast, humid);
+// lightning is a separate module (lightning.h) that writes a field found with the probes.
 //
 // This file is the portable part (unit tested in tests/test_weather.cpp):
 //   WeatherConfig    [Weather] keys of QuattroStagioni.ini, every key optional (defaults per phase)
