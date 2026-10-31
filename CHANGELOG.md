@@ -33,6 +33,7 @@ prima di questa versione: inventario, pacchetti dell'autunno, menu F5, soglie de
 - Scheda Info del menu F5: stato vero dei pacchetti e una riga per ogni funzione con il motivo
   quando è spenta. Ogni funzione si spegne da sola al primo errore (`<funzione>: DISABLED: <motivo>`).
 - Riconosciuta la versione 2.04.02 del gioco (exe 0x6AE46DD0).
+- Riconosciuta la versione 2.04.03 del gioco (exe 0x6AE58024, patch del 31/10).
 - Temperature stagionali (`[Climate]`): la massima del giorno nelle mappe del clima CPU del gioco segue la stagione (estate +4, primavera -6, autunno -8, inverno -24), deserto e luoghi freddi del gioco esclusi, notti mai sotto -30; originali ripristinati allo spegnimento. Provato fuori dal gioco.
 - `qs_install.exe`: installatore, controllo e disinstallazione per i giocatori.
   - Trova il gioco tramite Steam (registro e `libraryfolders.vdf`) oppure con `--game`.

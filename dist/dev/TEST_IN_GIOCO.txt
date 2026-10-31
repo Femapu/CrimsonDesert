@@ -6,7 +6,7 @@ PRIMA
 [ ] controlla.bat: pacchetti "da rigenerare"? -> genera_pacchetti.bat con i 19 stadi (vedi HANDOFF.md)
 
 GIRO 1, la mod (probes.ini originale, spento)
-[ ] Avvio: "version check ... 0x6AE46DD0" accettato; riga "startup in ... ms: ..." con weather,
+[ ] Avvio: "version check ... 0x6AE58024" accettato; riga "startup in ... ms: ..." con weather,
     lightning, lighting, day length, particles, climate, gpu swap "on"; nessun DISABLED inatteso
 [ ] Pacchetti: "packs: <stadio>.qsp verified"; F5 Info senza stadi mancanti
 [ ] GPU: "gpu: uploader ready ...", "gpu: upload prints read at ExecuteCommandLists"; cambio stagione
