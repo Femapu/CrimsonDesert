@@ -23,3 +23,7 @@ __pycache__/
 # artifact CI scaricato e output dei test locali (sessione locale)
 dist-ci/
 local-out/
+
+# dati imparati dal gioco sul PC di Stefano (durata del giorno), mai nel repo
+sun_table.ini
+sun_table.ini.tmp
