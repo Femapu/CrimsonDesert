@@ -131,7 +131,7 @@ struct BoolField {
 const BoolField kBools[] = {
     {"WeatherControl", &SeasonConfig::weatherControl},     {"SnowAccumulation", &SeasonConfig::snowAccumulation},
     {"LightControl", &SeasonConfig::lightControl},         {"DayLengthControl", &SeasonConfig::dayLengthControl},
-    {"Particles", &SeasonConfig::particles},
+    {"Particles", &SeasonConfig::particles},               {"ClimateControl", &SeasonConfig::climateControl},
 };
 
 }  // namespace
@@ -313,6 +313,7 @@ std::string SeasonConfig::save() const {
     kv("LightControl", b(lightControl), "luce e altezza del sole per stagione");
     kv("DayLengthControl", b(dayLengthControl), "giornate più corte in inverno");
     kv("Particles", b(particles), "foglie che cadono, fiato visibile");
+    kv("ClimateControl", b(climateControl), "temperature stagionali nella mappa del clima");
     line("; Velocità della neve, frazione di copertura per ora di gioco (0 .. 5).");
     kv("SnowAccumPerHour", fmt(snowAccumPerHour), "quando nevica sotto zero");
     kv("SnowMeltPerHour", fmt(snowMeltPerHour), "a +3 gradi (più veloce se fa più caldo)");

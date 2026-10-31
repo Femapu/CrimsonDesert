@@ -466,6 +466,8 @@ void weatherStop() {
     g_running = 0;
 }
 
+uintptr_t weatherClimateManager() { return weatherimpl::g_mgr.load(); }
+
 bool weatherGetInfo(WeatherInfo& out) {
     using namespace weatherimpl;
     std::lock_guard<std::mutex> lk(g_mu);

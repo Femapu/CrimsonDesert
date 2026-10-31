@@ -44,5 +44,7 @@ struct WeatherInfo {
     uint64_t writes = 0;
 };
 bool weatherGetInfo(WeatherInfo& out);  // false if never started
+// The climate manager seen by the update hook (0 until the game ran one tick); used by the climate module.
+uintptr_t weatherClimateManager();
 
 }  // namespace qs

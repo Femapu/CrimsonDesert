@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include "apply/apply.h"
+#include "apply/climate_win.h"
 #include "apply/snow_win.h"
 #include "apply/weather_win.h"
 #include "io_hooks.h"
@@ -25,11 +26,11 @@
 
 namespace {
 
-const char* const kVersion = "0.4.0 (season engine, packs, F5 menu, probes, winter snow, weather)";
+const char* const kVersion = "0.4.0 (season engine, packs, F5 menu, probes, winter snow, weather, climate)";
 HMODULE g_self = nullptr;
 volatile LONG g_initDone = 0;
 bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false, g_applyStarted = false,
-     g_snowStarted = false, g_weatherStarted = false;
+     g_snowStarted = false, g_weatherStarted = false, g_climateStarted = false;
 
 void initialize() {
     if (InterlockedExchange(&g_initDone, 1) != 0) return;  // run once
@@ -71,11 +72,12 @@ void initialize() {
         g_applyStarted = qs::applyStart();  // targets.ini; off by default
         g_snowStarted = qs::snowStart(scriptsDir, setup.versionOk);  // [Snow]: winter snow thresholds
         g_weatherStarted = qs::weatherStart(scriptsDir, setup.versionOk);  // [Weather]: seasonal weather
+        g_climateStarted = qs::climateStart(scriptsDir, setup.versionOk);  // [Climate]: seasonal temperatures
         QueryPerformanceCounter(&t1);
-        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s",
+        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s, climate %s",
                 double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart), hooked ? "on" : "off",
                 packs ? "on" : "off", g_seasonStarted ? "on" : "off", g_overlayStarted ? "on" : "off",
-                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off");
+                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off", g_climateStarted ? "on" : "off");
         qs::log::flush();
     } catch (...) {
         QS_ERR("unexpected exception during startup: plugin inactive");
@@ -111,6 +113,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
             if (g_initDone && !reserved) {  // FreeLibrary: final summary, remove hooks, close the log
                 qs::io::logSummary("unload");
                 QS_INFO("QuattroStagioni unloading");
+                if (g_climateStarted) qs::climateStop();  // restores the original climate maps
                 if (g_weatherStarted) qs::weatherStop();  // stops writing, unhooks
                 if (g_snowStarted) qs::snowStop();        // restores SnowStart/SnowFull
                 if (g_applyStarted) qs::applyStop();      // restores originals, before probeStop

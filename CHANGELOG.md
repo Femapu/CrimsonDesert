@@ -10,6 +10,7 @@ gioco** = verificato con test automatici, dati sintetici, wine o D3D12 software.
 ## [Non rilasciato]
 
 ### Aggiunto
+- Temperature stagionali (`[Climate]`): la massima del giorno nelle mappe del clima CPU del gioco segue la stagione (estate +4, primavera -6, autunno -8, inverno -24), deserto e luoghi freddi del gioco esclusi, notti mai sotto -30; originali ripristinati allo spegnimento. Provato fuori dal gioco.
 - `qs_install.exe`: installatore, controllo e disinstallazione per i giocatori.
   - Trova il gioco tramite Steam (registro e `libraryfolders.vdf`) oppure con `--game`.
   - Controlla la versione dell'eseguibile e di `meta\0.paver` con lo stesso elenco del plugin

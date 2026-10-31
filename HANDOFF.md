@@ -158,3 +158,18 @@ Prossimo passo meteo: probe che legge [[mgr+0x60]+0x20] +0xAC/+0x16C/+0x170 dura
 - Da testare in gioco: vedi INSTALL.txt della consegna (collana della pioggia, F5, righe `weather:` del log).
   Temporali: per ora pioggia fortissima, fulmini non controllati. Deserto: soglia `DesertTopTempC=28`
   da verificare (anche la valle di Tashkalp, terra normale dentro il deserto).
+
+## Branch `claude/temperature` (31/10): temperature stagionali
+- Da `claude/meteo`. Porting adattato di climate.cpp di Seasons (permesso di Khione95):
+  `src/core/apply/climate.*` (differenze per fase sfumate nella coda, deserto con bordo, pavimento
+  delle notti -30, regola 3x3 dei luoghi freddi; test `tests/test_climate.cpp`) e
+  `src/win/apply/climate_win.*` (vtable da RTTI, scansione heap, copia dell'originale, scrittura,
+  ripristino). Dettagli e scelte (neve profonda TODO, soglie della neve tenute) in
+  `docs/dev/season_engine.md`.
+- Default `[Climate]`: primavera -6, estate +4, fine estate +2, autunno -8, inverno -24; interruttore
+  F5 "Temperature stagionali" (`ClimateControl`).
+- NON provato in gioco. Sul build 0x6AE46DD0 nulla è verificato: la vtable si cerca per nome RTTI
+  (il log dice se coincide con 0x5E8D890, l'indirizzo di Seasons 1.0.6 per quel build).
+- Da provare: F5 Info/Meteo e luce, termometro in inverno (circa -24 rispetto all'estate del gioco),
+  deserto invariato, montagne innevate invariate, nessun danno da freddo di notte nei forti, ripristino
+  spegnendo l'interruttore (temperature del gioco subito).

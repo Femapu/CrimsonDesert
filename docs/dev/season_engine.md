@@ -81,6 +81,59 @@ di aggancio e stessi campi, guidato dal nostro motore stagioni e dalle regole di
   temporale è il livello di pioggia più forte con cielo chiuso; il log lo dice.
 - Log: `weather: spell ...`, `weather: HUD ...`, riepilogo ogni `LogIntervalSec`, `weather: DISABLED: ...`.
 
+## Temperature stagionali (`[Climate]`, src/core/apply/climate.*, src/win/apply/climate_win.*)
+Porting adattato di climate.cpp di Seasons of Pywel (Khione95, con il suo permesso scritto), guidato
+dal nostro calendario.
+- **Mappe**: il gioco tiene due mappe del clima CPU (`pa::PAClimateTexture`: quella del weather
+  manager e quella del climate manager a +0xD8). Oggetto: +0x18 texel, +0x20 numero (512x512), +0x30/+0x34
+  metri per texel (80), +0x38/+0x3C larghezza e altezza. Texel u32 = A | R<<8 | G<<16 | B<<24; B =
+  massima del giorno `(2B/255-1)*50`, G = escursione (notte = massima - ((1-G/255)*18+7)), R = vento.
+  Il gioco le campiona dal vivo: temperatura percepita, termometro, neve e neve profonda cambiano subito.
+- **Ricerca**: vtable dal nome RTTI `.?AVPAClimateTexture@pa@@` (nessun indirizzo fisso; l'indirizzo
+  noto per build, 0x5E8B7C0 su 0x6AE387F2 e 0x5E8D890 su 0x6AE46DD0, serve solo da controllo nel log),
+  poi scansione dell'heap (regioni private RW, a blocchi di 4 MB). Nuova scansione quando una mappa
+  sparisce o cambia buffer (caricamento del mondo), quando `[mgr+0xD8]` punta a una mappa non nota, ogni
+  15 s se non ce ne sono, ogni 5 minuti comunque.
+- **Controlli prima di scrivere**: vtable, 512x512, 262144 texel, 80 m, buffer leggibile; dati
+  plausibili (almeno un texel desertico, almeno il 10% di terra mite). Oggetti con la vtable ma un altro
+  formato e nessuna mappa valida: `climate: DISABLED`. Nessuna mappa in 3 minuti: modulo spento.
+- **Originale**: copiato all'aggancio. Se il gioco riscrive la mappa (contenuto diverso sia
+  dall'originale sia dal nostro), il nuovo contenuto diventa l'originale. Ripristino (solo se la mappa
+  contiene ancora i nostri valori) con l'interruttore F5 spento, regione temperata spenta, modulo
+  disattivato e allo scaricamento del plugin.
+- **Differenza**: valore della fase sul plateau (`SpringOffsetC=-6`, `SummerOffsetC=4`,
+  `LateSummerOffsetC=2`, `AutumnOffsetC=-8`, `WinterOffsetC=-24`), sfumato con smoothstep nella coda
+  di transizione (la stessa da cui escono i 20 stadi visivi, quindi coerente con le texture ma
+  continuo, senza salti di 4-5 gradi tra uno stadio e l'altro). La differenza in vigore insegue quella
+  della stagione a `MaxRate` (0,5 gradi al secondo reale) ed è arrotondata a 0,25 gradi; la mappa si
+  riscrive solo quando cambia. Cambia solo il byte B (G, R, A restano del gioco).
+- **Deserto**: texel con massima >= `DesertTopTempC` (28, come il meteo); entro `DesertRadius` (4
+  texel) restano del gioco in ogni stagione, poi la differenza entra in `DesertFade` (4 texel). Un
+  riscaldamento non porta mai un texel alla soglia del deserto: il controllo del deserto del modulo
+  meteo, che legge la mappa dal vivo, resta uguale a quello sui valori del gioco.
+- **Notti**: un raffreddamento non porta mai la notte sotto `NightFloorC` (-30; il freddo sotto circa
+  -40 ferisce). Dove la notte del gioco è già più fredda (montagne innevate) quel texel e i suoi 8
+  vicini restano del gioco (il campionamento bilineare mescola 2x2 texel). In estate il riscaldamento
+  vale anche lì.
+- **Neve profonda (TODO)**: le soglie della neve profonda (cvar a 0x71A8DE8 / 0x71A8E38 sul build
+  0x6AE387F2, subito dopo SnowStart/SnowFull con passo 0x50; si troverebbero con lo stesso metodo dei
+  nostri cvar della neve) restano quelle del gioco. Motivo: la GPU decide la neve profonda dalla texture
+  del clima su disco, che non cambiamo; spostare la soglia solo sulla CPU darebbe neve profonda
+  "logica" (test 3x3 del gioco) dove la GPU non la mostra. Con i default le zone temperate d'inverno
+  stanno sopra -20, quindi la neve profonda resta dove la mette il gioco.
+- **Neve e temperature insieme**: le soglie `[Snow]` (10 / 0 d'inverno) restano attive: le due cose
+  spingono nella stessa direzione (con -24 la terra temperata è sotto 10 e quasi sempre sotto 0, quindi
+  la neve piena è coerente col termometro) e il deserto resta escluso dal modulo meteo. Con
+  `ClimateControl` spento le soglie bastano da sole (provato in gioco il 30/10). Se in gioco la neve
+  sembra eccessiva con le temperature attive, provare `WinterSnowStart=2`, `WinterSnowFull=-6`.
+- Menu F5, scheda Meteo e luce: interruttore "Temperature stagionali" (`ClimateControl` in
+  `[Seasons]`), blocco "Temperature nel gioco" (stato, mappe, differenza in vigore, tipo di texel e
+  massima sotto la camera); riga in Info.
+- Log: `climate: PAClimateTexture vtable rva ... from RTTI (matches the known address)`, `climate:
+  heap scan ...`, `climate: attached map ...`, `climate: map ... at -24.00 C: N texels changed ...`,
+  `climate: season offset ...` (a ogni grado, all'arrivo e ogni `LogIntervalSec`), `climate: ... maps
+  restored`, `climate: DISABLED: ...`.
+
 ## Come lo usa il plugin (ogni frame o ogni ~0,5 s)
 ```cpp
 day = cfg.advance(day, secondiReali, oreDiGioco);  // secondo DaySource; salvare `day` (l'orologio del gioco riparte da 0 al caricamento)

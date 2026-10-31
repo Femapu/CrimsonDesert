@@ -482,3 +482,39 @@ blizzard
 
 temporale
 thunderstorm
+
+Temperature nel gioco
+Temperatures in the game
+
+in attesa della mappa del clima
+waiting for the climate map
+
+Mappe del clima agganciate: %d
+Climate maps attached: %d
+
+Differenza in vigore: %+.1f °C (stagione %+.1f °C)
+Offset in effect: %+.1f °C (season %+.1f °C)
+
+Qui: %s, massima del giorno %.0f °C (gioco %.0f °C)
+Here: %s, day top %.0f °C (game %.0f °C)
+
+terra normale
+ordinary land
+
+deserto: temperature del gioco
+desert: the game's temperatures
+
+bordo del deserto
+desert edge
+
+luogo freddo del gioco: temperature del gioco
+the game's cold place: the game's temperatures
+
+Temperature stagionali
+Seasonal temperatures
+
+Estati più calde, inverni freddi; il deserto e i luoghi freddi del gioco restano come sono.
+Warmer summers, cold winters; the desert and the game's cold places stay as they are.
+
+Temperature stagionali: %s
+Seasonal temperatures: %s

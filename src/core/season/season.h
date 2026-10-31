@@ -62,7 +62,7 @@ struct SeasonConfig {
     float realMinutesPerDay = 90.0f;                     // used when daySource == Playtime (game: ~60-120)
     float startDay = 0.0f;                               // day of year at first launch / manual value
     bool weatherControl = true, snowAccumulation = true, lightControl = true, dayLengthControl = true,
-         particles = true;
+         particles = true, climateControl = true;
     float snowAccumPerHour = 0.25f, snowMeltPerHour = 0.15f;  // in-game hours
     float virtualLatitudeDeg = 45.0f;
     RegionConfig regions[static_cast<int>(Region::Count)];

@@ -19,6 +19,7 @@
 #include <string>
 
 #include "imgui.h"
+#include "../apply/climate_win.h"
 #include "../apply/snow_win.h"
 #include "../apply/weather_win.h"
 #include "../io_hooks.h"
@@ -723,6 +724,45 @@ void weatherLive() {
     if (wi.spell.kind == apply::WeatherKind::Storm) dimText("%s", tr("Temporali: pioggia forte, i fulmini non sono ancora controllati."));
 }
 
+// Seasonal temperatures (src/win/apply/climate_win.h): a copy refreshed twice a second.
+const ClimateInfo& climateInfo() {
+    static ClimateInfo ci;
+    static double last = -10.0;
+    double now = ImGui::GetTime();
+    if (now - last >= 0.5) {
+        last = now;
+        if (!climateGetInfo(ci)) ci = ClimateInfo();
+    }
+    return ci;
+}
+
+const char* climateStateIt(const ClimateInfo& ci) {
+    if (!ci.started) return tr("non avviato");
+    switch (ci.state) {
+        case ClimateModState::Waiting: return tr("in avvio");
+        case ClimateModState::Active: return ci.maps > 0 ? tr("attivo") : tr("in attesa della mappa del clima");
+        case ClimateModState::Off: return tr("spento");
+        case ClimateModState::Disabled: return tr("disattivato");
+    }
+    return "?";
+}
+
+void climateLive() {
+    const ClimateInfo& ci = climateInfo();
+    sectionTitle(tr("Temperature nel gioco"));
+    ImGui::Text(tr("Stato: %s"), climateStateIt(ci));
+    if (!ci.reason.empty() && ci.state == ClimateModState::Disabled) dimText(tr("Motivo: %s"), ci.reason.c_str());
+    if (ci.state == ClimateModState::Disabled) return;
+    ImGui::Text(tr("Mappe del clima agganciate: %d"), ci.maps);
+    ImGui::Text(tr("Differenza in vigore: %+.1f °C (stagione %+.1f °C)"), ci.offsetC, ci.targetC);
+    if (ci.cameraKnown) {
+        static const char* const kinds[4] = {"terra normale", "deserto: temperature del gioco", "bordo del deserto",
+                                             "luogo freddo del gioco: temperature del gioco"};
+        const int k = ci.cameraKind >= 0 && ci.cameraKind < 4 ? ci.cameraKind : 0;
+        dimText(tr("Qui: %s, massima del giorno %.0f °C (gioco %.0f °C)"), tr(kinds[k]), ci.cameraTopC, ci.cameraGameTopC);
+    }
+}
+
 void tabWeather(Frame& f) {
     SeasonConfig& c = f.cfg;
     float colW = ImGui::GetContentRegionAvail().x * 0.47f;
@@ -730,6 +770,7 @@ void tabWeather(Frame& f) {
     ImGui::PushItemWidth(colW);
     sectionTitle(tr("Cosa controlla la mod"));
     f.changed |= toggle(tr("Meteo stagionale"), &c.weatherControl, tr("Pesi del meteo per stagione: estati limpide, autunni piovosi, inverni nevosi."));
+    f.changed |= toggle(tr("Temperature stagionali"), &c.climateControl, tr("Estati più calde, inverni freddi; il deserto e i luoghi freddi del gioco restano come sono."));
     f.changed |= toggle(tr("Neve che si accumula"), &c.snowAccumulation, tr("La copertura cresce quando nevica sotto zero e si scioglie sopra zero."));
     f.changed |= toggle(tr("Luce stagionale"), &c.lightControl, tr("Sole più basso e toni freddi in inverno, più caldi in autunno."));
     f.changed |= toggle(tr("Durata del giorno"), &c.dayLengthControl, tr("Giornate più corte in inverno, più lunghe in estate."));
@@ -746,6 +787,8 @@ void tabWeather(Frame& f) {
     ImGui::PopItemWidth();
     ImGui::Dummy(ImVec2(0, S(6)));
     weatherLive();
+    ImGui::Dummy(ImVec2(0, S(6)));
+    climateLive();
     ImGui::EndGroup();
 
     ImGui::SameLine(0, S(28));
@@ -815,6 +858,9 @@ void tabInfo(Frame& f) {
         const WeatherInfo& wi = weatherInfo();
         ImGui::Text(tr("Meteo stagionale: %s"), weatherStateIt(wi));
         if (wi.state == WeatherModState::Disabled && !wi.reason.empty()) dimText(tr("Motivo: %s"), wi.reason.c_str());
+        const ClimateInfo& ci = climateInfo();
+        ImGui::Text(tr("Temperature stagionali: %s"), climateStateIt(ci));
+        if (ci.state == ClimateModState::Disabled && !ci.reason.empty()) dimText(tr("Motivo: %s"), ci.reason.c_str());
     }
     ImGui::Dummy(ImVec2(0, S(6)));
     sectionTitle(tr("Neve d'inverno"));
