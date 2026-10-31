@@ -50,6 +50,8 @@ struct WeatherConfig {
     int desertRadius = 4;             // DesertRadius: texels (80 m) around the camera checked
     float desertFadeSec = 3.0f;       // DesertFadeSec: real seconds to hand the sky back to the game
     bool nativeSnowOutsideWinter = true;  // KeepGameSnow: the game's own snow outside winter (mountains)
+    float gameSnowBelowC = -5.0f;     // KeepGameSnowBelowC: ...only where the day top is at or below this
+                                      // (elsewhere the game's snow falls as rain)
     uint32_t startDelayMs = 20000;    // StartDelayMs
     float logIntervalSec = 60.0f;     // LogIntervalSec: composed values in the log (0 = never)
     PhaseWeather phase[season::kPhaseCount];
@@ -99,13 +101,18 @@ public:
     void seed(uint32_t s) { rng_ = s ? s : 0x9E3779B9u; }
 
     // Game hours passed (any amount: done in 0.25 h steps, at most 48 h). Rolls spells, moves levels.
+    // A spell rolled under another season (F5 change, calendar jump) ends at once.
     void advance(double gameHours, const WeatherSeason& s);
+    // A jump of the game's clock (sleep, loading): one fresh spell, levels set to it at once, instead
+    // of simulating every spell of the skipped hours.
+    void jump(double gameHours, const WeatherSeason& s);
     // Forces the next roll now (F5 / tests).
     void reroll() { until_ = clock_; }
 
     // The game's composed values -> ours. bypass 0..1: share handed back to the game (desert, off).
-    // Non-finite input: returned unchanged.
-    WeatherLayer compose(const WeatherLayer& game, float winterK, float bypass) const;
+    // coldHere: the camera is in a cold place (KeepGameSnowBelowC); outside winter the game's own
+    // snow is kept only there. Non-finite input: returned unchanged.
+    WeatherLayer compose(const WeatherLayer& game, float winterK, float bypass, bool coldHere = true) const;
 
     const WeatherSpell& spell() const { return spell_; }
     bool hasSpell() const { return rolled_; }
@@ -119,6 +126,7 @@ public:
 private:
     float uniform();  // 0..1
     void roll(const WeatherSeason& s);
+    bool staleSpell(const WeatherSeason& s) const;
 
     WeatherConfig cfg_;
     WeatherSpell spell_;

@@ -72,6 +72,7 @@ std::atomic<uintptr_t> g_mgr{0};
 std::atomic<int64_t> g_flags{-1};
 std::atomic<float> g_hour{-1.0f};
 float g_bypass = 1.0f, g_winterK = 0.0f;  // under g_mu
+bool g_coldHere = true;                   // under g_mu: KeepGameSnowBelowC around the camera
 float g_desertFade = 1.0f;                // worker only: desert (or unknown) fade for the after-compose features
 uint64_t g_lastHourTick = 0;              // game thread only
 uintptr_t g_goodHourFn = 0;               // game thread only
@@ -160,7 +161,7 @@ void afterCompose(uintptr_t mgr) {
     apply::WeatherLayer o;
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        o = g_dir.compose(g, g_winterK, g_bypass);
+        o = g_dir.compose(g, g_winterK, g_bypass, g_coldHere);
         g_info.game = g;
         g_info.out = o;
     }
@@ -393,8 +394,12 @@ DWORD WINAPI worker(LPVOID) {
         ws.progress = s.regionPhaseProgress[r];
         ws.transitionFraction = sc.transitionFraction;
         ws.winterK = apply::winterIntensity(s, sc);
-        if (on) g_dir.advance(hours, ws);
+        if (on) {
+            if (jump) g_dir.jump(hours, ws);
+            else g_dir.advance(hours, ws);
+        }
         g_winterK = ws.winterK;
+        g_coldHere = !desertKnown || hottest <= cfg.gameSnowBelowC;
         const float step = cfg.desertFadeSec > 0 ? float(dt) / cfg.desertFadeSec : 1.0f;
         g_bypass = bypassAll ? std::min(1.0f, g_bypass + step) : std::max(0.0f, g_bypass - step);
         g_desertFade = (!desertKnown || desert) ? std::min(1.0f, g_desertFade + step) : std::max(0.0f, g_desertFade - step);
@@ -414,10 +419,12 @@ DWORD WINAPI worker(LPVOID) {
             lastLog = now;
             const apply::WeatherLayer& gg = g_info.game;
             const apply::WeatherLayer& oo = g_info.out;
-            QS_INFO("weather: %s %.0f%% (%.1f h left, season %s, winter %.0f%%), desert %s, bypass %.2f | game rain %.2f snow %.2f "
-                    "cover %.2f cloud %.2f -> rain %.2f snow %.2f cover %.2f cloud %.2f precip %.2f humid %.2f, %llu writes",
+            QS_INFO("weather: %s %.0f%% (%.1f h left, season %s, winter %.0f%%), desert %s, cold %s (top %.1f C), bypass %.2f | "
+                    "game rain %.2f snow %.2f cover %.2f cloud %.2f -> rain %.2f snow %.2f cover %.2f cloud %.2f precip %.2f humid %.2f, "
+                    "%llu writes",
                     apply::toString(g_dir.spell().kind), g_dir.spell().intensity * 100.0f, g_dir.hoursLeft(),
-                    season::toString(ws.phase), ws.winterK * 100.0f, !desertKnown ? "unknown" : (desert ? "yes" : "no"), g_bypass,
+                    season::toString(ws.phase), ws.winterK * 100.0f, !desertKnown ? "unknown" : (desert ? "yes" : "no"),
+                    g_coldHere ? "yes" : "no", hottest, g_bypass,
                     gg.rain, gg.snow, gg.cover, gg.cloudiness, oo.rain, oo.snow, oo.cover, oo.cloudiness, oo.precipitation,
                     oo.humidity, (unsigned long long)g_info.writes);
         }

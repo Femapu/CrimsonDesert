@@ -86,8 +86,8 @@ WeatherConfig::WeatherConfig() {
         {{15, 50, 22, 0, 10, 3}, 3, 8, 1, 2.5f, 0.25f, 0.55f, 0.85f, 0.5f},     // spring: sunny, little rain, rare storms
         {{15, 58, 12, 0, 5, 10}, 2, 6, 1, 2.5f, 0.2f, 0.5f, 0.85f, 0.25f},      // summer: little rain, thunderstorms
         {{15, 50, 20, 0, 8, 7}, 3, 7, 1, 3, 0.25f, 0.6f, 0.85f, 0.35f},         // late summer: little rain, some storms
-        {{10, 15, 22, 13, 25, 15}, 3, 9, 1.5f, 4, 0.4f, 0.9f, 0.85f, 1.0f},     // autumn: rain and storms, cloudier
-        {{0, 5, 25, 37, 28, 5}, 4, 10, 2, 5, 0.45f, 1.0f, 0.85f, 1.0f},         // winter: overcast, frequent snow
+        {{10, 22, 25, 15, 19, 9}, 3, 9, 1.5f, 4, 0.4f, 0.9f, 0.85f, 1.0f},      // autumn: rain and storms, cloudier
+        {{0, 10, 30, 38, 18, 4}, 4, 10, 2, 5, 0.45f, 1.0f, 0.85f, 1.0f},        // winter: overcast, snow now and then
     };
     for (int p = 0; p < season::kPhaseCount; ++p) {
         PhaseWeather& w = phase[p];
@@ -115,6 +115,7 @@ void WeatherConfig::load(const Ini& ini, std::vector<std::string>& warnings) {
     if (ini.has(S, "KeepGameSnow")) nativeSnowOutsideWinter = ini.getInt(S, "KeepGameSnow", 1) != 0;
     num("RampPerHour", rampPerHour, 0.1f, 60.0f);
     num("ClearCover", clearCover, 0.0f, 1.0f);
+    num("KeepGameSnowBelowC", gameSnowBelowC, -50.0f, 50.0f);
     num("DesertTopTempC", desertTopC, 0.0f, 60.0f);
     num("DesertFadeSec", desertFadeSec, 0.0f, 60.0f);
     num("LogIntervalSec", logIntervalSec, 0.0f, 3600.0f);
@@ -181,6 +182,9 @@ std::string weatherIniTemplate() {
         "DesertFadeSec=3\n"
         "; 1 = fuori dall'inverno resta la neve del gioco (montagne innevate); 0 = nessuna neve fuori dall'inverno\n"
         "KeepGameSnow=1\n"
+        "; ...ma solo dove la massima del giorno (mappa del clima) è a questa temperatura o sotto; altrove la\n"
+        "; neve del gioco fuori dall'inverno cade come pioggia\n"
+        "KeepGameSnowBelowC=-5\n"
         "; ogni quanti secondi reali scrivere nel log i valori composti (0 = mai)\n"
         "LogIntervalSec=60\n"
         "StartDelayMs=20000\n"
@@ -299,8 +303,25 @@ void WeatherDirector::roll(const WeatherSeason& s) {
                        storm ? " (storm = heavy rain tier; lightning: [Lightning])" : ""));
 }
 
+// Rolled under rules that are neither the current phase's nor (transition tail) the next one's.
+bool WeatherDirector::staleSpell(const WeatherSeason& s) const {
+    return rolled_ && spell_.phase != s.phase && spell_.phase != season::nextPhase(s.phase);
+}
+
+void WeatherDirector::jump(double gameHours, const WeatherSeason& s) {
+    if (!(gameHours > 0)) return;
+    clock_ += std::min(gameHours, 48.0);
+    roll(s);
+    lv_ = target(cfg_, spell_);
+}
+
 void WeatherDirector::advance(double gameHours, const WeatherSeason& s) {
     if (!(gameHours > 0)) return;
+    if (staleSpell(s)) {
+        log_.push_back(fmt("weather: season now %s: the %s spell ends", season::toString(s.phase),
+                           season::toString(spell_.phase)));
+        reroll();
+    }
     double left = std::min(gameHours, 48.0);
     while (left > 1e-9) {
         double h = std::min(left, 0.25);
@@ -320,7 +341,7 @@ void WeatherDirector::advance(double gameHours, const WeatherSeason& s) {
     }
 }
 
-WeatherLayer WeatherDirector::compose(const WeatherLayer& g, float winterK, float bypass) const {
+WeatherLayer WeatherDirector::compose(const WeatherLayer& g, float winterK, float bypass, bool coldHere) const {
     const float in[6] = {g.precipitation, g.cloudiness, g.humidity, g.snow, g.rain, g.cover};
     for (int i = 0; i < 6; ++i)
         if (!std::isfinite(in[i])) return g;
@@ -331,10 +352,13 @@ WeatherLayer WeatherDirector::compose(const WeatherLayer& g, float winterK, floa
     const float w = snowShare(winterK);
     const float keep = clamp01(1.0f - L.suppress);
     const float nativeRain = clamp01(g.rain) * clamp01(L.nativeRain) * keep;
-    // The game's own snow: always kept in winter, outside it only with KeepGameSnow.
-    const float gameSnow = clamp01(g.snow) * keep * (w > 0 || cfg_.nativeSnowOutsideWinter ? 1.0f : 0.0f);
+    // The game's own snow: always kept in winter, outside it only with KeepGameSnow in a cold place;
+    // elsewhere it falls as rain (a storm called in autumn on a map the season made colder).
+    const bool snowStays = w > 0 || (cfg_.nativeSnowOutsideWinter && coldHere);
+    const float gameSnow = snowStays ? clamp01(g.snow) * keep : 0.0f;
+    const float snowAsRain = snowStays ? 0.0f : clamp01(g.snow) * keep;
     // The game's rain turns to snow as winter comes; ours the same.
-    const float rainN = nativeRain * (1.0f - w), snowN = std::max(gameSnow, nativeRain * w);
+    const float rainN = std::max(nativeRain * (1.0f - w), snowAsRain), snowN = std::max(gameSnow, nativeRain * w);
     WeatherLayer o = g;
     o.rain = std::max(rainN, L.precip * (1.0f - w));
     o.snow = std::max(snowN, L.precip * w);

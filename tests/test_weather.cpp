@@ -105,11 +105,11 @@ static void testRules() {
     CHECK(sp[R] < 0.15 && sp[T] < 0.05);      // little rain, rare storms
     CHECK(su[R] < 0.08 && su[T] > sp[T]);     // summer: little rain but thunderstorms
     CHECK(ls[R] < 0.12 && ls[T] > 0.02);      // late summer: some storms
-    CHECK(au[R] + au[T] > 0.3 && au[R] > sp[R] && au[T] > su[T]);  // autumn: rain and storms
+    CHECK(au[R] + au[T] > 0.2 && au[R] + au[T] < 0.35 && au[R] > sp[R]);  // autumn: rain now and then, not always
     CHECK(au[Y] + au[O] > sp[Y] + sp[O]);     // autumn cloudier
     CHECK(wi[O] + wi[Y] > 0.55);              // winter: overcast / cloudy prevalent
-    CHECK(wi[C] < 0.08 && wi[G] == 0);        // rarely a clear sky, never the game's own
-    CHECK(wi[R] > 0.2);                       // frequent snow
+    CHECK(wi[C] < 0.15 && wi[G] == 0);        // rarely a clear sky, never the game's own
+    CHECK(wi[R] > 0.12 && wi[R] + wi[T] < 0.3);  // snow now and then, not always
 }
 
 static void testCompose() {
@@ -144,6 +144,10 @@ static void testCompose() {
     WeatherDirector k1;
     k1.configure(cfg);
     CHECK(near(k1.compose(gameLayer(0, 0.6f), 0.0f, 0.0f).snow, 0.6));
+    // ...but only in a cold place: elsewhere the game's snow falls as rain (autumn storm, 31/10)
+    WeatherLayer warm = k1.compose(gameLayer(0, 0.6f), 0.0f, 0.0f, false);
+    CHECK(warm.snow == 0.0f && near(warm.rain, 0.6));
+    CHECK(near(k1.compose(gameLayer(0, 0.6f), 1.0f, 0.0f, false).snow, 0.6));  // winter: kept anywhere
 
     // Winter: our precipitation and the game's rain become snow.
     WeatherDirector w;
@@ -210,6 +214,25 @@ static void testSmooth() {
     // the log names every spell
     std::vector<std::string> lines = a.takeLog();
     CHECK(!lines.empty() && lines[0].find("weather: spell ") == 0);
+}
+
+static void testSeasonChangeAndJump() {
+    // a winter spell does not outlive a switch to summer (F5, 31/10: rain went on into summer)
+    WeatherDirector d;
+    d.seed(8);
+    WeatherSeason wi = seasonOf(Phase::Winter), su = seasonOf(Phase::Summer);
+    d.advance(1.0, wi);
+    CHECK(d.spell().phase == Phase::Winter);
+    d.advance(0.25, su);
+    CHECK(d.spell().phase == Phase::Summer);
+    // a jump of the clock (loading, sleep): one spell, levels at its target at once
+    d.takeLog();
+    d.jump(22.0, wi);
+    std::vector<std::string> l = d.takeLog();
+    CHECK(l.size() == 1 && d.spell().phase == Phase::Winter);
+    WeatherLevels t = WeatherDirector::target(d.config(), d.spell());
+    CHECK(near(d.levels().precip, t.precip) && near(d.levels().coverFloor, t.coverFloor) && near(d.levels().suppress, t.suppress));
+    CHECK(near(d.hoursLeft(), d.spell().hours, 1e-3));
 }
 
 static void testTransition() {
@@ -297,6 +320,7 @@ int main(int, char**) {
     testCompose();
     testBypassAndSafety();
     testSmooth();
+    testSeasonChangeAndJump();
     testTransition();
     testClock();
     testDesert();
