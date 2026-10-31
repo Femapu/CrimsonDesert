@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <vector>
 
 #include "../probe/memory.h"
 
@@ -74,6 +75,29 @@ bool GuardedMemory::write(uint64_t addr, const void* in, size_t n, std::string* 
     }
     uint8_t back[8];
     if (!probe::mem::read(uintptr_t(addr), back, n) || std::memcmp(back, in, n) != 0) {
+        if (why) *why = "readback differs";
+        return false;
+    }
+    return true;
+}
+
+bool GuardedMemory::writeBlock(uint64_t addr, const void* in, size_t n, std::string* why) {
+    if (n == 0 || n > kMaxBlock) {
+        if (why) *why = "bad size";
+        return false;
+    }
+    WriteCheck c = checkWritable(mod_, uintptr_t(addr), n);
+    if (c != WriteCheck::Ok) {
+        if (why) *why = toString(c);
+        return false;
+    }
+    SIZE_T done = 0;
+    if (!WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void*>(uintptr_t(addr)), in, n, &done) || done != n) {
+        if (why) *why = "WriteProcessMemory failed";
+        return false;
+    }
+    std::vector<uint8_t> back(n);
+    if (!probe::mem::read(uintptr_t(addr), back.data(), n) || std::memcmp(back.data(), in, n) != 0) {
         if (why) *why = "readback differs";
         return false;
     }

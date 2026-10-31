@@ -39,7 +39,8 @@ constexpr uintptr_t kCameraX = 0x1001F8, kCameraZ = 0x100200;
 struct ExpectedVtable {
     uint32_t timestamp, rva;
 };
-constexpr ExpectedVtable kExpected[] = {{0x6AE2C6A6u, 0x5E897C0u}, {0x6AE387F2u, 0x5E8B7C0u}, {0x6AE46DD0u, 0x5E8D890u}};
+constexpr ExpectedVtable kExpected[] = {{0x6AE2C6A6u, 0x5E897C0u}, {0x6AE387F2u, 0x5E8B7C0u}, {0x6AE46DD0u, 0x5E8D890u},
+                                     {0x6AE58024u, 0x5E91AD0u}};
 constexpr size_t kMaxMaps = 8;
 constexpr size_t kChunk = 4u << 20;
 
@@ -168,7 +169,7 @@ int restoreAll() {
         MapHeader h;
         if (checkMap(m.obj, &h) == Check::Ok && h.texels == m.texels && readTexels(m.texels, cur) && cur == m.written) {
             std::string why;
-            if (g_mem && g_mem->write(m.texels, m.orig.data(), kTexels * 4, &why)) ++n;
+            if (g_mem && g_mem->writeBlock(m.texels, m.orig.data(), kTexels * 4, &why)) ++n;
             else QS_ERR("climate: restore of map %p failed (%s)", reinterpret_cast<void*>(m.obj), why.c_str());
         }
         m.hasWritten = false;
@@ -346,7 +347,7 @@ DWORD WINAPI worker(LPVOID) {
                 m.hasWritten = q != 0.0f;
                 continue;
             }
-            if (g_mem->write(m.texels, m.desired.data(), kTexels * 4, &err)) {
+            if (g_mem->writeBlock(m.texels, m.desired.data(), kTexels * 4, &err)) {
                 m.written = m.desired;
                 m.hasWritten = true;
                 ++wrote;
