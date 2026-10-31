@@ -22,6 +22,7 @@
 #include "../apply/climate_win.h"
 #include "../apply/snow_win.h"
 #include "../apply/weather_win.h"
+#include "../gpu/gpu_swap.h"
 #include "../io_hooks.h"
 #include "overlay.h"
 #include "qs_state.h"
@@ -881,6 +882,29 @@ void tabInfo(Frame& f) {
             ImGui::Text(tr("Valori d'inverno: %.1f, %.1f"), si.winterStart, si.winterFull);
             if (!ss.reason.empty()) dimText(tr("Motivo: %s"), ss.reason.c_str());
             dimText("%s", tr("Si spegne con \"Neve che si accumula\" (scheda Meteo e luce)."));
+        }
+    }
+    ImGui::Dummy(ImVec2(0, S(6)));
+    sectionTitle(tr("Cambio texture su GPU"));
+    {
+        static GpuSwapStats gs;  // gpuSwapStats() takes a few locks: refresh once a second
+        static double lastGpu = -10.0;
+        const double now = ImGui::GetTime();
+        if (now - lastGpu >= 1.0) {
+            gs = gpuSwapStats();
+            lastGpu = now;
+        }
+        if (!gs.started) {
+            ImGui::TextWrapped("%s", tr("Non avviato (spento nell'ini, nessun pacchetto o overlay assente)."));
+        } else {
+            ImGui::Text(tr("Texture residenti seguite: %llu, in coda: %llu"), (unsigned long long)gs.tracked,
+                        (unsigned long long)gs.pending);
+            ImGui::Text(tr("Cambi fatti: %llu, saltati: %llu (%.2f MB per frame)"), (unsigned long long)gs.jobsDone,
+                        (unsigned long long)gs.jobsSkipped, gs.mbPerFrame);
+            if (gs.disabled)
+                ImGui::TextWrapped(tr("Disattivato: %s"), gs.disabledReason.empty() ? "?" : gs.disabledReason.c_str());
+            else
+                ImGui::Text(tr("Stato: %s"), gs.queueReady ? tr("attivo") : tr("in attesa della coda del gioco"));
         }
     }
     ImGui::Dummy(ImVec2(0, S(6)));

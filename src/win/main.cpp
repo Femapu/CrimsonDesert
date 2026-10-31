@@ -7,6 +7,8 @@
 //   3. install Win32 file I/O hooks (io_hooks.cpp) and open the season packs written by qs_gen
 //   4. season engine tick (season_tick.cpp): calendar, stage -> active pack
 //   5. D3D12 overlay with the F5 menu (overlay/), read-only runtime probes (probe/)
+//   6. GPU live swap (gpu/, [GpuSwap]): rewrites textures already in VRAM when their stage changes;
+//      needs packs and the overlay (its uploads go out from the overlay's Present hook)
 // Steps 4-5 also run when the version guard fails (no packs then): the menu and the probes only
 // read game state, and the probes are what finds the systems of a new game build.
 #include <windows.h>
@@ -15,6 +17,9 @@
 #include "apply/climate_win.h"
 #include "apply/snow_win.h"
 #include "apply/weather_win.h"
+#include "../core/gpu/live.h"
+#include "../core/ini.h"
+#include "gpu/gpu_swap.h"
 #include "io_hooks.h"
 #include "lang.h"
 #include "log.h"
@@ -30,7 +35,45 @@ const char* const kVersion = "0.4.0 (season engine, packs, F5 menu, probes, wint
 HMODULE g_self = nullptr;
 volatile LONG g_initDone = 0;
 bool g_seasonStarted = false, g_overlayStarted = false, g_probeStarted = false, g_applyStarted = false,
-     g_snowStarted = false, g_weatherStarted = false, g_climateStarted = false;
+     g_snowStarted = false, g_weatherStarted = false, g_climateStarted = false, g_gpuStarted = false;
+
+// [GpuSwap]: every key optional (an old ini without the section gets the defaults).
+bool startGpuSwap(const std::wstring& scriptsDir, const std::wstring& gameRoot, const qs::Config& cfg, bool packs,
+                  bool overlay) {
+    qs::gpu::GpuSwapSettings gs;
+    std::vector<uint8_t> raw;
+    if (qs::readWholeFile(qs::joinPath(scriptsDir, L"QuattroStagioni.ini"), raw)) {
+        qs::Ini ini;
+        ini.parse(std::string(raw.begin(), raw.end()));
+        std::vector<std::string> warn;
+        gs.load(ini, warn);
+        for (const std::string& w : warn) QS_ERR("gpu: %s", w.c_str());
+    }
+    QS_INFO("config: [GpuSwap] Enabled=%d MaxMBPerFrame=%.2f LogLevel=%d RingMB=%d CacheMB=%d AssumeCommonState=%d "
+            "PreloadAllPacks=%d",
+            int(gs.enabled), gs.maxMBPerFrame, gs.logLevel, gs.ringMB, gs.cacheMB, int(gs.assumeCommonState),
+            int(gs.preloadAllPacks));
+    if (!gs.enabled) {
+        QS_INFO("gpu: [GpuSwap] Enabled=0: live swap off, resident textures change after a reload");
+        return false;
+    }
+    if (!packs || !overlay) {
+        QS_INFO("gpu: live swap off (%s)", !packs ? "no season packs" : "overlay off: the uploads need its Present hook");
+        return false;
+    }
+    qs::GpuSwapConfig c;
+    c.gameRoot = gameRoot;
+    const std::wstring& f = cfg.packFolder;
+    const bool absolute = f.size() > 1 && (f[1] == L':' || (f[0] == L'\\' && f[1] == L'\\'));
+    c.packsDir = absolute ? f : qs::joinPath(scriptsDir, f);
+    c.budgetBytesPerFrame = gs.budgetBytesPerFrame();
+    c.logLevel = gs.logLevel;
+    c.ringMB = gs.ringMB;
+    c.cacheMB = gs.cacheMB;
+    c.assumeCommonState = gs.assumeCommonState;
+    c.preloadAllPacks = gs.preloadAllPacks;
+    return qs::gpuSwapStart(c);
+}
 
 void initialize() {
     if (InterlockedExchange(&g_initDone, 1) != 0) return;  // run once
@@ -73,11 +116,12 @@ void initialize() {
         g_snowStarted = qs::snowStart(scriptsDir, setup.versionOk);  // [Snow]: winter snow thresholds
         g_weatherStarted = qs::weatherStart(scriptsDir, setup.versionOk);  // [Weather]: seasonal weather
         g_climateStarted = qs::climateStart(scriptsDir, setup.versionOk);  // [Climate]: seasonal temperatures
+        g_gpuStarted = startGpuSwap(scriptsDir, setup.gameRoot, cfg, packs, g_overlayStarted);  // [GpuSwap]
         QueryPerformanceCounter(&t1);
-        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s, climate %s",
+        QS_INFO("startup in %.1f ms: file hooks %s, packs %s, season %s, overlay %s, probes %s, apply %s, snow %s, weather %s, climate %s, gpu swap %s",
                 double(t1.QuadPart - t0.QuadPart) * 1000.0 / double(f.QuadPart), hooked ? "on" : "off",
                 packs ? "on" : "off", g_seasonStarted ? "on" : "off", g_overlayStarted ? "on" : "off",
-                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off", g_climateStarted ? "on" : "off");
+                g_probeStarted ? "on" : "off", g_applyStarted ? "on" : "off", g_snowStarted ? "on" : "off", g_weatherStarted ? "on" : "off", g_climateStarted ? "on" : "off", g_gpuStarted ? "on" : "off");
         qs::log::flush();
     } catch (...) {
         QS_ERR("unexpected exception during startup: plugin inactive");
@@ -118,6 +162,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
                 if (g_snowStarted) qs::snowStop();        // restores SnowStart/SnowFull
                 if (g_applyStarted) qs::applyStop();      // restores originals, before probeStop
                 if (g_probeStarted) qs::probeStop();      // before io::uninstall (MH_Uninitialize)
+                if (g_gpuStarted) qs::gpuSwapStop();      // before overlayStop and io::uninstall
                 if (g_overlayStarted) qs::overlayStop();
                 if (g_seasonStarted) qs::seasonStop();
                 qs::io::packsStop();

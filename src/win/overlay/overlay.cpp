@@ -384,7 +384,11 @@ bool createBuffers() {
     return true;
 }
 
+std::atomic<ExecuteObserver> g_execObserver{nullptr};
+std::mutex g_queueHookMutex;
+
 void ensureQueueCaptureHook(ID3D12Device* device) {
+    std::lock_guard<std::mutex> lk(g_queueHookMutex);  // the overlay and the GPU swap may both ask
     if (oExecuteCommandLists) return;
     D3D12_COMMAND_QUEUE_DESC qd{};
     qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -800,6 +804,8 @@ void renderFrame() {
     (void)submitted;
 }
 
+std::atomic<PresentCallback> g_presentCb{nullptr};
+
 void onPresent(IDXGISwapChain* sc) {
     if (!running()) return;
     g_presentThreadId.store(GetCurrentThreadId());
@@ -846,6 +852,12 @@ void onPresent(IDXGISwapChain* sc) {
     }
     g_keyWasDown = down;
     renderFrame();
+    if (PresentCallback cb = g_presentCb.load()) {
+        try {
+            cb(R.queue);
+        } catch (...) {
+        }
+    }
     ReleaseSRWLockExclusive(&g_renderLock);
 }
 
@@ -997,6 +1009,12 @@ void STDMETHODCALLTYPE hkExecuteCommandLists(ID3D12CommandQueue* q, UINT n, ID3D
                 g_lastDirectQueue.store(q);
                 if (GetCurrentThreadId() == g_presentThreadId.load()) g_presentThreadQueue.store(q);
             }
+        }
+    }
+    if (ExecuteObserver ob = g_execObserver.load()) {
+        try {
+            ob(n, lists);
+        } catch (...) {
         }
     }
     oExecuteCommandLists(q, n, lists);
@@ -1215,6 +1233,35 @@ void overlaySetToggleKey(int vk) {
 }
 
 bool overlayActive() { return running() && R.buffersReady; }
+
+void overlaySetPresentCallback(PresentCallback cb) {
+    g_presentCb.store(cb);
+    if (!cb) {  // calls run under the exclusive render lock: once we get it, none is running
+        AcquireSRWLockExclusive(&g_renderLock);
+        ReleaseSRWLockExclusive(&g_renderLock);
+    }
+}
+
+bool overlayObserveExecute(ID3D12Device* device, ExecuteObserver ob) {
+    if (!device) return false;
+    ensureQueueCaptureHook(device);
+    if (!oExecuteCommandLists) return false;
+    g_execObserver.store(ob);
+    return true;
+}
+
+void overlayStopObservingExecute() {
+    g_execObserver.store(nullptr);
+}
+
+ID3D12CommandQueue* overlayAcquireGameQueue() {
+    if (!running()) return nullptr;
+    AcquireSRWLockShared(&g_renderLock);
+    ID3D12CommandQueue* q = R.queue;
+    if (q) q->AddRef();
+    ReleaseSRWLockShared(&g_renderLock);
+    return q;
+}
 
 }  // namespace qs
 

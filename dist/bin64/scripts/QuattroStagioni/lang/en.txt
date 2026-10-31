@@ -518,3 +518,58 @@ Warmer summers, cold winters; the desert and the game's cold places stay as they
 
 Temperature stagionali: %s
 Seasonal temperatures: %s
+
+Neve d'inverno
+Winter snow
+
+Non avviata.
+Not started.
+
+attiva
+active
+
+in attesa dell'inverno
+waiting for winter
+
+in avvio
+starting
+
+disattivata
+disabled
+
+Stato: %s (intensità %.0f%%)
+State: %s (intensity %.0f%%)
+
+SnowStart %.1f, SnowFull %.1f (originali %.1f, %.1f)
+SnowStart %.1f, SnowFull %.1f (originals %.1f, %.1f)
+
+Valori d'inverno: %.1f, %.1f
+Winter values: %.1f, %.1f
+
+Motivo: %s
+Reason: %s
+
+Si spegne con "Neve che si accumula" (scheda Meteo e luce).
+Switched off with "Snow that builds up" (Weather and light tab).
+
+# GPU live swap (Info tab)
+Cambio texture su GPU
+Live texture swap (GPU)
+
+Non avviato (spento nell'ini, nessun pacchetto o overlay assente).
+Not started (off in the ini, no packs or no overlay).
+
+Texture residenti seguite: %llu, in coda: %llu
+Resident textures tracked: %llu, queued: %llu
+
+Cambi fatti: %llu, saltati: %llu (%.2f MB per frame)
+Swaps done: %llu, skipped: %llu (%.2f MB per frame)
+
+Disattivato: %s
+Disabled: %s
+
+Stato: %s
+State: %s
+
+in attesa della coda del gioco
+waiting for the game queue

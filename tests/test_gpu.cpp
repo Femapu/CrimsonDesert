@@ -14,6 +14,8 @@
 
 #include "../src/core/gpu/fingerprint.h"
 #include "../src/core/gpu/library.h"
+#include "../src/core/gpu/live.h"
+#include "../src/core/ini.h"
 #include "../src/core/gpu/swap_model.h"
 #include "../src/core/lookup3.h"
 #include "gpu_synth.h"
@@ -551,6 +553,123 @@ static void testLibrary() {
     fs::remove_all(dir);
 }
 
+static void testLiveSettings() {
+    std::vector<std::string> w;
+    GpuSwapSettings s;
+    qs::Ini empty;
+    s.load(empty, w);  // old ini without [GpuSwap]: defaults
+    CHECK(w.empty() && s.enabled && s.maxMBPerFrame == 4.0 && s.logLevel == 1 && !s.assumeCommonState && !s.preloadAllPacks);
+    CHECK(s.budgetBytesPerFrame() == 4ull << 20);
+    qs::Ini ini;
+    ini.parse("[GpuSwap]\nEnabled=0\nMaxMBPerFrame=1.5\nLogLevel=2\nAssumeCommonState=1\n");
+    s.load(ini, w);
+    CHECK(w.empty() && !s.enabled && s.maxMBPerFrame == 1.5 && s.logLevel == 2 && s.assumeCommonState);
+    CHECK(s.budgetBytesPerFrame() == 1572864ull);
+    qs::Ini bad;
+    bad.parse("[GpuSwap]\nEnabled=forse\nMaxMBPerFrame=1000\nLogLevel=9\nRingMB=abc\n");
+    s.load(bad, w);
+    CHECK(w.size() == 4 && s.enabled && s.maxMBPerFrame == 64.0 && s.logLevel == 2 && s.ringMB == 48);
+    w.clear();
+    qs::Ini tpl;
+    tpl.parse(gpuSwapIniTemplate());
+    s.load(tpl, w);
+    CHECK(w.empty() && s.enabled && s.maxMBPerFrame == 4.0);
+}
+
+static void testLiveTargets() {
+    std::string paz;
+    uint64_t off = 0;
+    CHECK(splitTextureKey("0012/3.paz@4096", paz, off) && paz == "0012/3.paz" && off == 4096);
+    CHECK(!splitTextureKey("0012/3.paz", paz, off) && !splitTextureKey("0012/3.paz@", paz, off) &&
+          !splitTextureKey("0012/3.paz@12x", paz, off));
+
+    FingerprintIndex ix;
+    const int a = ix.addStage("A"), w = ix.addStage("W");
+    const uint32_t t0 = ix.addTexture("0001/0.paz@0", shapeOf(Family::BC1, 71, 64, 64, 3));
+    const uint32_t t1 = ix.addTexture("0001/0.paz@4096", shapeOf(Family::BC1, 71, 64, 64, 3));
+    const uint32_t t2 = ix.addTexture("0002/1.paz@0", shapeOf(Family::BC1, 71, 64, 64, 3));
+    const uint32_t t3 = ix.addTexture("0003/0.paz@0", shapeOf(Family::BC1, 71, 64, 64, 3));
+    // io serves: t0 autumn, t1 winter, t2 vanilla, t3 not covered; "A>W.1" has no indexed pack
+    std::map<std::string, std::string> served = {{"0001/0.paz@0", "A"}, {"0001/0.paz@4096", "W"}, {"0002/1.paz@0", ""}};
+    auto fn = [&](const std::string& pz, uint64_t o, std::string& st) {
+        auto it = served.find(pz + "@" + std::to_string(o));
+        if (it == served.end()) return false;
+        st = it->second;
+        return true;
+    };
+    auto slotOf = [&](const std::string& s) { return ix.slotOf(s); };
+    auto tf = [&](uint32_t t, int slot) { return t == t1 && slot == w ? 0 : slot; };  // W keeps t1 original
+    TargetPlan p = planTargets(ix, fn, slotOf, tf);
+    CHECK(p.slot.size() == 4 && p.slot[t0] == a && p.slot[t1] == 0 && p.slot[t2] == 0 && p.slot[t3] == -1);
+    CHECK(p.staged == 1 && p.vanilla == 2 && p.unknown == 1 && p.waiting == 0 && p.missingStages.empty());
+    served["0001/0.paz@0"] = "A>W.1";
+    p = planTargets(ix, fn, slotOf, tf);
+    CHECK(p.slot[t0] == -1 && p.waiting == 1 && p.missingStages.size() == 1 && p.missingStages[0] == "A>W.1");
+    p = planGlobal(ix, w, tf);
+    CHECK(p.slot[t0] == w && p.slot[t1] == 0 && p.staged == 3 && p.vanilla == 1);
+    p = planGlobal(ix, -1, tf);
+    CHECK(p.slot[t0] == -1 && p.unknown == 4);
+}
+
+static void testLiveCheck() {
+    TextureDesc tex;
+    tex.family = Family::BC1;
+    tex.dxgiFormat = 71;
+    tex.width = 256;
+    tex.height = 128;
+    tex.mipCount = 9;
+    Resident r;
+    r.texture = 0;
+    r.mipOffset = 1;  // game dropped the top mip
+    r.shape.dxgiFormat = 72;  // SRGB resource for a UNORM DDS: same family
+    r.shape.width = 128;
+    r.shape.height = 64;
+    r.shape.mipLevels = 8;
+    r.shape.arraySize = 1;
+    r.content.assign(8, 1);
+    LiveDesc live;
+    live.dimension = kDimTexture2D;
+    live.dxgiFormat = 72;
+    live.width = 128;
+    live.height = 64;
+    live.mipLevels = 8;
+    std::string why;
+    const MipLayout m2 = mipLayout(Family::BC1, 256, 128, 2);
+    CHECK(checkDestination(live, r, tex, 1, 2, m2, &why));
+    CHECK(!checkDestination(live, r, tex, 1, 1, mipLayout(Family::BC1, 256, 128, 1), &why) && why == "mip offset mismatch");
+    CHECK(!checkDestination(live, r, tex, 0, 1, m2, &why) && why == "mip layout differs from the data");
+    LiveDesc l2 = live;
+    l2.width = 256;  // pooled resource reused for something else
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why) && why == "description changed since tracking");
+    l2 = live;
+    l2.dxgiFormat = 98;
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why));
+    l2 = live;
+    l2.depthOrArraySize = 6;
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why) && why == "texture array");
+    l2 = live;
+    l2.flags = 0x4;  // UAV
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why) && why.find("flags") != std::string::npos);
+    l2 = live;
+    l2.layout = 2;
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why));
+    l2 = live;
+    l2.dimension = 4;
+    CHECK(!checkDestination(l2, r, tex, 1, 2, m2, &why));
+    CHECK(!checkDestination(live, r, tex, 8, 9, m2, &why) && why == "subresource out of range");
+    TextureDesc t2 = tex;
+    t2.family = Family::BC3;
+    CHECK(!checkDestination(live, r, t2, 1, 2, m2, &why));
+    t2 = tex;
+    t2.width = 512;  // same family, other size
+    CHECK(!checkDestination(live, r, t2, 1, 2, m2, &why) && why == "size differs from the texture data");
+
+    FrameRate fr;
+    CHECK(fr.sample(0, 0) == 0.0);
+    CHECK(fr.sample(4ull << 20, 2) == 2.0);
+    CHECK(fr.sample(4ull << 20, 2) == 0.0);
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -560,6 +679,9 @@ int main(int argc, char** argv) {
     testTracker();
     testScheduler();
     testLibrary();
+    testLiveSettings();
+    testLiveTargets();
+    testLiveCheck();
     std::printf("test_gpu: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

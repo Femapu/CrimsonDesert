@@ -173,3 +173,14 @@ Prossimo passo meteo: probe che legge [[mgr+0x60]+0x20] +0xAC/+0x16C/+0x170 dura
 - Da provare: F5 Info/Meteo e luce, termometro in inverno (circa -24 rispetto all'estate del gioco),
   deserto invariato, montagne innevate invariate, nessun danno da freddo di notte nei forti, ripristino
   spegnendo l'interruttore (temperature del gioco subito).
+
+## Branch `claude/gpu` (31/10): tappa 3, cambio in diretta su GPU
+- Da `claude/temperature` + `wip/gpu-live` completato (approccio di Seasons, permesso di Khione95):
+  le texture già in VRAM passano al nuovo stadio al tick del calendario o con F5, distribuite sui frame
+  (`[GpuSwap] MaxMBPerFrame=4`). Impronte lette in ExecuteCommandLists (buffer completi). A qualunque
+  errore si spegne da solo (`gpu: DISABLED: <motivo>`). Riga F5 Info "Cambio texture su GPU".
+  Dettagli e cosa guardare nel log: `docs/dev/gpu_swap.md`.
+- Stato delle tre tappe: meteo (`claude/meteo`), temperature (`claude/temperature`), GPU (`claude/gpu`,
+  contiene le altre due): compilano e i test sono verdi, NESSUNA provata in gioco.
+- Il PC ha la build 2.04.02 (exe 0x6AE46DD0): i pacchetti `.qsp` potrebbero dover essere rigenerati con
+  `qs_gen` se la verifica della build li rifiuta (scheda Info: stadi mancanti; log `pack ...`).
