@@ -1,7 +1,8 @@
 # Probe delle funzioni finali (fulmini, luce, durata del giorno, particelle)
 
 Tutte le quattro funzioni scrivono nei due blocchi che il gioco ricompone a ogni tick, raggiunti
-dall'hook del meteo già verificato su 2.04.02 (exe 0x6AE46DD0):
+dall'hook del meteo già verificato su 2.04.02 (exe 0x6AE46DD0; sulla 2.04.03, exe 0x6AE58024, da
+riverificare: il log dice `weather: climate update found` oppure `weather: DISABLED`):
 
 | Blocco | Catena dal climate manager | Noto |
 |---|---|---|

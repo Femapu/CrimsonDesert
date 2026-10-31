@@ -191,6 +191,14 @@ particelle; poi preparazione della release (versione 0.1.0 nel plugin e in qs_ge
 utente, LEGGIMI, sezione `[Climate]` nell'ini, kit di test). Compila (`./build.sh test` verde) e i test unitari coprono la logica pura; NULLA è provato
 in gioco. Il tag v0.1.0 NON è creato: lo decide Stefano dopo il test.
 
+**PATCH 2.04.03 (31/10, exe 0x6AE58024, 329.084.312 byte)**: riconosciuta in `known_builds.h` (commit di
+Stefano). Le firme del meteo (update del climate manager e query HUD) e della neve sono verificate solo su
+0x6AE387F2 e 0x6AE46DD0: su 2.04.03 vanno riverificate in gioco. Se non corrispondono la mod resta sicura
+(`weather: DISABLED: climate update: signature not found (game update?)`, e con il meteo si fermano anche
+fulmini, luce, durata del giorno e particelle). Temperature (vtable da RTTI) e GPU non dipendono da firme.
+I pacchetti `.qsp` vanno rigenerati per la 2.04.03 (legati all'exe esatto). Dove sotto si legge 2.04.02 /
+0x6AE46DD0 vale ora la build installata.
+
 **Fatto**
 - Base comune: le funzioni scrivono dopo la composizione del gioco usando l'hook del meteo già
   verificato su 2.04.02 (nessuna firma nuova). Con `[Weather] Enabled=0` l'hook resta e il meteo non
@@ -224,7 +232,8 @@ cartella `sviluppo/` contiene questo file e `probes_funzioni_finali.ini` (giro d
 lettura); nelle release con tag la cartella non c'è.
 Prima: `qs_install.exe --check`, installare l'artifact, `controlla.bat` (pacchetti), poi gioco. Tutto si
 legge in `bin64\scripts\QuattroStagioni.log`.
-1. **Avvio**: `version check: ... 0x6AE46DD0` accettato; riga `startup in ... ms: ... weather on, lightning on,
+1. **Avvio**: `version check: ... 0x6AE58024` (2.04.03) accettato; `weather: climate update found ...` (firma
+   valida anche su 2.04.03); riga `startup in ... ms: ... weather on, lightning on,
    lighting on, day length on, particles on, climate on, gpu swap on`. Nessun `DISABLED` inatteso.
 2. **Pacchetti**: `packs: A.qsp verified ...` per ogni stadio; nessun `refused: pack was generated for game build`.
    F5 Info: nessuno stadio mancante.
@@ -261,10 +270,10 @@ legge in `bin64\scripts\QuattroStagioni.log`.
 14. **Uscita**: righe `... stop` di ogni modulo, nessun crash in chiusura.
 Poi un giro di probe (`docs/dev/probe_funzioni_finali.md`) per i campi mancanti, uno alla volta.
 
-### Pacchetti `.qsp` e 2.04.02
+### Pacchetti `.qsp` e 2.04.02 / 2.04.03
 Ogni pacchetto è legato all'exe esatto (dimensione + timestamp) e agli hash dei pamt: il plugin rifiuta quelli
-di un'altra build (`packs: ... refused: pack was generated for game build ...`). I 19 pacchetti del 30/10 sera
-vanno rigenerati se sono stati creati prima che l'exe diventasse 0x6AE46DD0 (molto probabile). Controllo:
+di un'altra build (`packs: ... refused: pack was generated for game build ...`). Con la 2.04.03 installata
+(exe 0x6AE58024) tutti i 19 pacchetti creati prima vanno rigenerati. Controllo:
 `controlla.bat` (scrive "da rigenerare"). Rigenerazione di tutti i 19 stadi con `genera_pacchetti.bat` seguito
 dagli stadi (U è l'estate del gioco: niente da generare, 4 piani + 15 transizioni = 19):
 `genera_pacchetti.bat S L A W "S>U.1" "S>U.2" "S>U.3" "U>L.1" "U>L.2" "U>L.3" "L>A.1" "L>A.2" "L>A.3" "A>W.1" "A>W.2" "A>W.3" "W>S.1" "W>S.2" "W>S.3"`

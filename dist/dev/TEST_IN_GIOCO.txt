@@ -8,6 +8,8 @@ PRIMA
 GIRO 1, la mod (probes.ini originale, spento)
 [ ] Avvio: "version check ... 0x6AE58024" accettato; riga "startup in ... ms: ..." con weather,
     lightning, lighting, day length, particles, climate, gpu swap "on"; nessun DISABLED inatteso
+[ ] 2.04.03: "weather: climate update found ..." e "snow: SnowStart found ..." (firme ancora valide);
+    se invece "weather: DISABLED: ... signature not found": mandare il log, servono firme nuove
 [ ] Pacchetti: "packs: <stadio>.qsp verified"; F5 Info senza stadi mancanti
 [ ] GPU: "gpu: uploader ready ...", "gpu: upload prints read at ExecuteCommandLists"; cambio stagione
     da F5 (Manuale): le piante visibili cambiano in pochi secondi, senza scatti
