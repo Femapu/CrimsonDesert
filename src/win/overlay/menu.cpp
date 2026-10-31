@@ -723,7 +723,7 @@ void weatherLive() {
         dimText("%s", tr("Obiettivo della stagione: in attesa dell'orologio del gioco"));
     }
     if (wi.mapFound) dimText(tr("Deserto: %s (massima del giorno %.0f °C)"), wi.desert ? tr("sì") : tr("no"), wi.hottestC);
-    if (wi.spell.kind == apply::WeatherKind::Storm) dimText("%s", tr("Temporali: pioggia forte, i fulmini non sono ancora controllati."));
+    if (wi.spell.kind == apply::WeatherKind::Storm) dimText("%s", tr("Temporali: pioggia forte; fulmini secondo la stagione (stato nella scheda Info)."));
 }
 
 // Seasonal temperatures (src/win/apply/climate_win.h): a copy refreshed twice a second.

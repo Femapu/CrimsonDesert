@@ -579,3 +579,6 @@ Lightning
 
 Fulmini e tuoni nei temporali: frequenti in estate e autunno, quasi mai in inverno; mai nel deserto.
 Lightning and thunder in storms: frequent in summer and autumn, hardly ever in winter; never in the desert.
+
+Temporali: pioggia forte; fulmini secondo la stagione (stato nella scheda Info).
+Storms: heavy rain; lightning follows the season (status in the Info tab).
