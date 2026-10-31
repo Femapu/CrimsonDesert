@@ -14,6 +14,7 @@
 #include "log.h"
 #include "qs_state.h"
 #include "winutil.h"
+#include "world_pos.h"
 
 namespace qs {
 namespace {
@@ -24,6 +25,25 @@ std::atomic<bool> g_stop{false};
 std::mutex g_saveMutex;
 double g_day = 0;  // owned by the tick thread; read under g_saveMutex for saving
 bool g_packs = false;
+
+// The DLC area (world_pos.h): the published state says every region is excluded, as season.cpp
+// writes it for a disabled region, and the global light/day length values are the game's own.
+void excludeAllRegions(season::SeasonState& st) {
+    for (int r = 0; r < season::kRegionCount; ++r) {
+        st.regionActive[r] = false;
+        st.regionPhase[r] = season::Phase::Summer;
+        st.regionPhaseProgress[r] = 0.0f;
+        st.stage[r] = season::VisualStage();
+        st.snowCover[r] = 0.0f;
+        st.leaves[r] = 0.0f;
+        st.breathVisible[r] = false;
+    }
+    st.fallingLeaves = 0.0f;
+    st.sunElevationOffsetDeg = 0.0f;
+    st.lightTint[0] = st.lightTint[1] = st.lightTint[2] = 1.0f;
+    st.saturation = 1.0f;
+    st.dayScale = st.nightScale = 1.0f;
+}
 
 std::string readText(const std::wstring& path) {
     std::string out;
@@ -207,8 +227,17 @@ void tickLoop() {
                 if (overrideBase.empty()) overrideBase = stage;
                 else if (stage != overrideBase) releaseOverride(("calendar moved to stage " + stage).c_str());
             }
+            // DLC area: the textures of new reads are the game's (all regions off for the packs) and the
+            // modules see excluded regions; the calendar itself keeps running.
+            const bool inDlc = worldPosTick();
+            season::SeasonState published = st;
+            season::SeasonConfig packCfg = cfg;
+            if (inDlc) {
+                excludeAllRegions(published);
+                for (season::RegionConfig& rc : packCfg.regions) rc.enabled = false;
+            }
             // Per-texture packs: cheap when nothing changes, opens/closes packs when needed.
-            if (g_packs) io::setSeasonDay(day, cfg);
+            if (g_packs) io::setSeasonDay(day, packCfg);
             std::string packsText;
             if (g_packs) {
                 const io::PacksStatus ps = io::packsStatus();
@@ -223,8 +252,9 @@ void tickLoop() {
             }
             {
                 std::lock_guard<std::mutex> lk(shared().mutex);
-                shared().season = st;
-                shared().statusLine = cfg.dayToLabel(day) + "  |  stadio " + stage + packsText;
+                shared().season = published;
+                shared().statusLine = cfg.dayToLabel(day) + "  |  stadio " + stage + packsText +
+                                      (inDlc ? "  |  area DLC: come il gioco" : "");
             }
             {
                 std::lock_guard<std::mutex> lk(g_saveMutex);
@@ -260,6 +290,7 @@ bool seasonStart(const std::wstring& scriptsDir, bool packsActive) {
     std::vector<std::string> errors;
     cfg.load(ini, errors);  // starts from defaults; problems are clamped and reported
     for (const auto& e : errors) QS_INFO("season config: %s", e.c_str());
+    worldPosConfigure(ini, scriptsDir);  // [DLCArea], read by the tick
     {
         std::lock_guard<std::mutex> lk(shared().mutex);
         shared().config = cfg;
