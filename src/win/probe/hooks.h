@@ -50,6 +50,14 @@ public:
     static bool ensureInitialized();
     static void releaseIfOwned();  // uninitialises only if we initialised and no probe hook is left
 
+    // MinHook puts every trampoline within +-1 GB of its target. The delayed workers (weather and
+    // the systems riding on it) hook ~20 s after start, when the game may have filled that range:
+    // MH_CreateHook then fails with MH_ERROR_MEMORY_ALLOC. Called once at startup, this reserves
+    // (no commit) up to `count` allocation-granularity regions reachable from the whole main
+    // module; install() releases one of them and retries when MinHook finds no room. Returns how
+    // many were reserved; *lo/*hi (optional) receive the lowest and highest region.
+    static int reserveTrampolineSpace(int count, uintptr_t* lo = nullptr, uintptr_t* hi = nullptr);
+
 private:
     uintptr_t target_ = 0;
 };

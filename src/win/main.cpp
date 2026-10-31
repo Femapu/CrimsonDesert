@@ -28,6 +28,7 @@
 #include "lang.h"
 #include "log.h"
 #include "overlay/overlay.h"
+#include "probe/hooks.h"
 #include "probe/probe.h"
 #include "season_tick.h"
 #include "setup.h"
@@ -99,6 +100,16 @@ void initialize() {
             QS_INFO("disabled by config (Enabled=0): no hooks installed");
             return;
         }
+
+        // Before the game fills the address space around its exe: the delayed MinHook detours
+        // (weather and the systems that ride on it) need trampoline room within +-1 GB of it.
+        uintptr_t trLo = 0, trHi = 0;
+        const int trampolineRegions = qs::probe::GuardedMinHook::reserveTrampolineSpace(8, &trLo, &trHi);
+        if (trampolineRegions > 0)
+            QS_INFO("hooks: %d trampoline regions reserved near the game module (%p..%p)", trampolineRegions,
+                    reinterpret_cast<void*>(trLo), reinterpret_cast<void*>(trHi));
+        else
+            QS_ERR("hooks: no trampoline region could be reserved near the game module: late hooks may fail");
 
         qs::initLanguage(scriptsDir);
         qs::SetupResult setup = qs::runSetup(cfg, scriptsDir);

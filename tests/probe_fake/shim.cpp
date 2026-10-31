@@ -46,6 +46,12 @@ extern "C" __declspec(dllexport) int qsTestSelfTest(void* prot, void* stub, void
     void* orig = nullptr;
     std::string why;
     check(!mh.install(m, reinterpret_cast<uintptr_t>(prot), normal, &orig, &why), "MinHook on .prot refused");
+    uintptr_t lo = 0, hi = 0;
+    const uintptr_t n = reinterpret_cast<uintptr_t>(normal);
+    MEMORY_BASIC_INFORMATION mbi{};
+    check(GuardedMinHook::reserveTrampolineSpace(2, &lo, &hi) == 2 && lo + 0x40000000 > n && hi < n + 0x40000000 &&
+              VirtualQuery(reinterpret_cast<void*>(lo), &mbi, sizeof(mbi)) && mbi.State == MEM_RESERVE,
+          "trampoline regions reserved within MinHook's +-1 GB of the module");
     RttiIndex idx;
     idx.build(m.view);
     RttiClass c;

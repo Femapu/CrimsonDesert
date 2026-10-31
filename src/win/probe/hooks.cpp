@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "../../core/probe/capture_stub.h"
+#include "../log.h"
 #include "memory.h"
 
 namespace qs::probe {
@@ -13,6 +14,67 @@ namespace {
 
 volatile LONG g_mhOwned = 0;    // we called MH_Initialize successfully
 volatile LONG g_mhHooks = 0;    // probe hooks currently created through MinHook
+
+// Address space kept free for MinHook trampoline blocks (see reserveTrampolineSpace).
+constexpr int kMaxReserved = 16;
+constexpr uintptr_t kTrampolineReach = 0x40000000;  // MinHook buffer.c MAX_MEMORY_RANGE (+-1 GB)
+void* volatile g_reserved[kMaxReserved] = {};
+volatile LONG g_reservedLeft = 0;
+
+uintptr_t allocGranularity() {
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwAllocationGranularity ? si.dwAllocationGranularity : 0x10000;
+}
+
+// Reserves free granularity-aligned regions walking from `from` towards `limit` (down when
+// down = true), as MinHook's own FindPrev/NextFreeRegion would. Returns the count added.
+int reserveWalk(uintptr_t from, uintptr_t limit, bool down, int want, int& slot, uintptr_t g) {
+    int got = 0;
+    uintptr_t a = (from / g) * g;
+    a = down ? a - g : a + g;
+    while (got < want && slot < kMaxReserved && (down ? a >= limit : a <= limit)) {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery(reinterpret_cast<void*>(a), &mbi, sizeof(mbi)) == 0) break;
+        uintptr_t next;
+        if (mbi.State == MEM_FREE) {
+            if (void* r = VirtualAlloc(reinterpret_cast<void*>(a), g, MEM_RESERVE, PAGE_NOACCESS)) {
+                g_reserved[slot++] = r;
+                ++got;
+            }
+            next = down ? a - g : a + g;
+        } else if (down) {
+            uintptr_t ab = reinterpret_cast<uintptr_t>(mbi.AllocationBase);
+            if (ab < g) break;
+            next = (ab / g) * g - g;
+        } else {
+            next = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+            next = (next + g - 1) / g * g;
+        }
+        if (down ? next >= a : next <= a) break;  // no progress (wrap-around)
+        a = next;
+    }
+    return got;
+}
+
+// Gives back one reserved region that MinHook can reach from `target`, so its next search finds
+// free space there. False when none is left.
+bool releaseReservedNear(uintptr_t target) {
+    const uintptr_t g = allocGranularity();
+    for (int i = 0; i < kMaxReserved; ++i) {
+        uintptr_t r = reinterpret_cast<uintptr_t>(g_reserved[i]);
+        if (!r || r + kTrampolineReach < target + g || r + g > target + kTrampolineReach - g) continue;
+        if (InterlockedCompareExchangePointer(&g_reserved[i], nullptr, reinterpret_cast<void*>(r)) !=
+            reinterpret_cast<void*>(r))
+            continue;  // taken by another thread
+        VirtualFree(reinterpret_cast<void*>(r), 0, MEM_RELEASE);
+        LONG left = InterlockedDecrement(&g_reservedLeft);
+        QS_INFO("hooks: no free memory near %p for a MinHook trampoline: reserved region %p released for it (%ld left)",
+                reinterpret_cast<void*>(target), reinterpret_cast<void*>(r), long(left));
+        return true;
+    }
+    return false;
+}
 
 void setWhy(std::string* why, const std::string& s) {
     if (why) *why = s;
@@ -135,6 +197,36 @@ void GuardedMinHook::releaseIfOwned() {
     if (g_mhHooks == 0 && InterlockedExchange(&g_mhOwned, 0) == 1) MH_Uninitialize();
 }
 
+int GuardedMinHook::reserveTrampolineSpace(int count, uintptr_t* lo, uintptr_t* hi) {
+    if (count > kMaxReserved) count = kMaxReserved;
+    int slot = 0;
+    while (slot < kMaxReserved && g_reserved[slot]) ++slot;  // a second call only adds
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(GetModuleHandleW(nullptr));
+    if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const uint8_t*>(dos) + dos->e_lfanew);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(dos);
+    const uintptr_t end = base + nt->OptionalHeader.SizeOfImage;
+    const uintptr_t g = allocGranularity();
+    if (end - base > kTrampolineReach / 2) return 0;  // no region would reach the whole image
+    // Bounds that keep a region (and MinHook's 4 KB block in it) reachable from every image byte.
+    const uintptr_t minAddr = end > kTrampolineReach ? end - kTrampolineReach + g : g;
+    const uintptr_t maxAddr = base + kTrampolineReach - 2 * g;
+    int got = reserveWalk(base, minAddr, true, (count + 1) / 2, slot, g);  // below the image first
+    got += reserveWalk(end - 1, maxAddr, false, count - got, slot, g);
+    if (got < count) got += reserveWalk(base, minAddr, true, count - got, slot, g);  // top up below
+    InterlockedExchangeAdd(&g_reservedLeft, got);
+    uintptr_t l = UINTPTR_MAX, h = 0;
+    for (int i = 0; i < kMaxReserved; ++i) {
+        uintptr_t r = reinterpret_cast<uintptr_t>(g_reserved[i]);
+        if (!r) continue;
+        if (r < l) l = r;
+        if (r > h) h = r;
+    }
+    if (lo) *lo = got ? l : 0;
+    if (hi) *hi = got ? h : 0;
+    return got;
+}
+
 bool GuardedMinHook::install(const ModuleInfo& m, uintptr_t target, void* detour, void** original, std::string* why) {
     if (target_) return setWhy(why, "already installed"), false;
     TargetCheck c = checkHookTarget(m, target);
@@ -142,6 +234,8 @@ bool GuardedMinHook::install(const ModuleInfo& m, uintptr_t target, void* detour
     if (!ensureInitialized()) return setWhy(why, "MH_Initialize failed"), false;
     void* tgt = reinterpret_cast<void*>(target);
     MH_STATUS st = MH_CreateHook(tgt, detour, original);
+    // No room within MinHook's reach: hand it a region reserved at startup and retry.
+    while (st == MH_ERROR_MEMORY_ALLOC && releaseReservedNear(target)) st = MH_CreateHook(tgt, detour, original);
     if (st != MH_OK) return setWhy(why, std::string("MH_CreateHook: ") + MH_StatusToString(st)), false;
     InterlockedIncrement(&g_mhHooks);
     target_ = target;
