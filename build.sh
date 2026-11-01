@@ -93,7 +93,16 @@ if [[ "${1:-}" == "test" ]]; then
   for f in "${TESTS[@]}"; do
     n=$(basename "${f%.cpp}")
     echo "-- $n"
-    ./build/"$n" "${2:-tests/data}" || rc=1
+    out=$(./build/"$n" "${2:-tests/data}" 2>&1) && trc=0 || trc=$?
+    echo "$out"
+    if [[ $trc -ne 0 ]]; then
+      rc=1
+      # GitHub annotations: readable without signing in (the job log is not)
+      if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+        grep -E "FAIL" <<<"$out" | head -n 20 | sed "s/^/::error title=$n::/" || true
+        echo "::error title=$n::exit code $trc"
+      fi
+    fi
   done
   exit $rc
 fi
